@@ -185,3 +185,38 @@ class Klantprofiel(Basis):
     # Het profiel waarmee gewerkt wordt: gelijk aan of defensiever dan het afgeleide profiel.
     risicoprofiel_id: Mapped[int] = mapped_column(ForeignKey("risicoprofiel.id"))
     afwijking_toelichting: Mapped[str | None] = mapped_column(VersleuteldeTekst)
+
+
+class Portefeuille(Basis):
+    """Eén vastgelegde versie van de portefeuille van een klant. Wordt niet meer gewijzigd.
+
+    Risicoprofiel, banden en doorrekening zijn momentopnamen, zodat later te reconstrueren is
+    waarop het advies was gebaseerd, ook als modelallocaties of fondsgegevens daarna wijzigen.
+    """
+
+    __tablename__ = "portefeuille"
+    __table_args__ = (UniqueConstraint("klant_id", "versie"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    klant_id: Mapped[int] = mapped_column(ForeignKey("klant.id", ondelete="CASCADE"), index=True)
+    versie: Mapped[int] = mapped_column(Integer)
+    vastgelegd_op: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    vastgelegd_door: Mapped[int] = mapped_column(ForeignKey("adviseur.id"))
+    klantprofiel_id: Mapped[int] = mapped_column(ForeignKey("klantprofiel.id"))
+    risicoprofiel: Mapped[str] = mapped_column(String(30))
+    banden: Mapped[dict] = mapped_column(JSON)
+    uitsluitingen: Mapped[list] = mapped_column(JSON)
+    doorrekening: Mapped[dict] = mapped_column(JSON)
+    toelichting: Mapped[str | None] = mapped_column(VersleuteldeTekst)
+
+
+class Positie(Basis):
+    __tablename__ = "positie"
+
+    portefeuille_id: Mapped[int] = mapped_column(
+        ForeignKey("portefeuille.id", ondelete="CASCADE"), primary_key=True
+    )
+    instrument_id: Mapped[int] = mapped_column(ForeignKey("instrument.id"), primary_key=True)
+    gewicht: Mapped[int] = mapped_column(Integer)  # basispunten

@@ -1,11 +1,12 @@
 from fastapi import FastAPI
 
-from app.api import auth, instrumenten, klanten
+from app.api import auth, instrumenten, klanten, portefeuilles
 
 app = FastAPI(title="Portefeuille op maat")
 app.include_router(auth.router)
 app.include_router(instrumenten.router)
 app.include_router(klanten.router)
+app.include_router(portefeuilles.router)
 
 
 @app.get("/gezondheid")
