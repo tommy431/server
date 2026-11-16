@@ -166,6 +166,38 @@ def vragenlijst(_: Ingelogd) -> dict:
     }
 
 
+class UitkomstIn(BaseModel):
+    antwoorden: dict[str, int]
+    horizon_jaren: int = Field(ge=1, le=60)
+
+
+class UitkomstUit(BaseModel):
+    score_bereidheid: int
+    score_capaciteit: int
+    score_kennis: int
+    lage_kennis: bool
+    risicoprofiel: str
+    bepalende_factor: str
+
+
+@router.post("/vragenlijst/uitkomst", response_model=UitkomstUit)
+def uitkomst(invoer: UitkomstIn, db: Db, _: Ingelogd) -> UitkomstUit:
+    """Berekent het afgeleide risicoprofiel zonder iets op te slaan."""
+    try:
+        u = bereken(invoer.antwoorden, invoer.horizon_jaren)
+    except ValueError as fout:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(fout)) from fout
+    code = db.scalar(select(Risicoprofiel.code).where(Risicoprofiel.niveau == u.niveau))
+    return UitkomstUit(
+        score_bereidheid=u.score_bereidheid,
+        score_capaciteit=u.score_capaciteit,
+        score_kennis=u.score_kennis,
+        lage_kennis=u.lage_kennis,
+        risicoprofiel=code,
+        bepalende_factor=u.bepalende_factor,
+    )
+
+
 def _risicoprofiel_uit(db: Db, profiel: Risicoprofiel) -> RisicoprofielUit:
     regels = {
         r.categorie: r

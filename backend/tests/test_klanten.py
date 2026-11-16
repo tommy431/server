@@ -218,6 +218,7 @@ def test_zonder_inloggen_geen_toegang(client):
         ("post", "/klanten/1/profielen"),
         ("get", "/vragenlijst"),
         ("get", "/risicoprofielen"),
+        ("post", "/vragenlijst/uitkomst"),
         ("put", "/risicoprofielen/neutraal/allocatie"),
     ]:
         assert client.request(methode, pad).status_code == 401, (methode, pad)
@@ -388,3 +389,20 @@ def test_ongeldige_modelallocatie_geweigerd(ingelogd, fout):
 
 def test_onbekend_risicoprofiel(ingelogd):
     assert ingelogd.put("/risicoprofielen/onbekend/allocatie", json=regels()).status_code == 404
+
+
+def test_uitkomst_vooraf_berekenen_slaat_niets_op(ingelogd, klant_id):
+    r = ingelogd.post(
+        "/vragenlijst/uitkomst", json={"antwoorden": antwoorden(3, 1, 0), "horizon_jaren": 12}
+    )
+    assert r.json() == {
+        "score_bereidheid": 100,
+        "score_capaciteit": 33,
+        "score_kennis": 0,
+        "lage_kennis": True,
+        "risicoprofiel": "defensief",
+        "bepalende_factor": "capaciteit",
+    }
+    assert ingelogd.get(f"/klanten/{klant_id}/profielen").json() == []
+    r = ingelogd.post("/vragenlijst/uitkomst", json={"antwoorden": {}, "horizon_jaren": 12})
+    assert r.status_code == 422

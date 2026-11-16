@@ -8,22 +8,21 @@ Webapplicatie waarmee een beleggingsadviseur een portefeuille op maat samenstelt
 |---|---|---|
 | 1 | Fundament: server, database, inloggen, logboek | klaar |
 | 2 | Data: ETF-lijst, koersbronnen, kwaliteitscontroles | klaar |
-| 3 | Klantprofiel en risicoprofiel | nog te bouwen |
+| 3 | Klantprofiel, vragenlijst, risicoprofielen en eerste schermen | klaar |
 | 4 | Portefeuilleconstructie | nog te bouwen |
 | 5 | Historische analyse | nog te bouwen |
 | 6 | Verwacht rendement (scenario's) | nog te bouwen |
 | 7 | Rapportage | nog te bouwen |
 
-Er is nog geen gebruikersinterface; de server is te bedienen via de API (`/docs`).
 
 ## Starten
 
-Vereist: Python 3.12+, [uv](https://docs.astral.sh/uv/) en Docker (voor PostgreSQL).
+Vereist: Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js 20+ en Docker (voor PostgreSQL).
 
 ```bash
 docker compose up -d
 cd backend
-cp ../.env.example .env        # vul JWT_GEHEIM in
+cp ../.env.example .env        # vul JWT_GEHEIM en VERSLEUTELSLEUTEL in
 uv sync
 uv run alembic upgrade head
 uv run python -m app.cli adviseur-aanmaken --email jij@voorbeeld.nl --naam "Jouw Naam"
@@ -31,6 +30,19 @@ uv run python -m app.cli universum-laden
 uv run python -m app.cli data-verversen
 uv run uvicorn app.main:app --reload
 ```
+
+In een tweede venster de schermen:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open daarna http://localhost:5173 en log in met het aangemaakte account.
+
+Bewaar `VERSLEUTELSLEUTEL` veilig en apart van de database: zonder die sleutel zijn de
+klantgegevens niet meer te lezen.
 
 Tests: `uv run pytest` (SQLite in het geheugen; zet `TEST_DATABASE_URL` om tegen PostgreSQL te testen).
 
@@ -49,7 +61,21 @@ Tests: `uv run pytest` (SQLite in het geheugen; zet `TEST_DATABASE_URL` om tegen
   (gaten, koerssprongen van meer dan 20%, verouderde koersen). Bevindingen worden gemeld, niet
   stil gecorrigeerd.
 
+## Klantprofiel
+
+- Naam, e-mailadres, geboortedatum, beleggingsdoel en toelichtingen staan versleuteld in de
+  database. Een adviseur ziet alleen zijn eigen klanten.
+- Het risicoprofiel volgt uit de vragenlijst en de horizon: de voorzichtigste van
+  risicobereidheid, risicocapaciteit en horizon bepaalt. De adviseur mag een defensiever
+  profiel kiezen (met toelichting), nooit een offensiever.
+- Elke wijziging van een profiel is een nieuwe versie; eerdere versies blijven bewaard.
+- De modelallocaties per risicoprofiel zijn te beheren in het scherm Modelallocaties.
+
 ## Nog te controleren
+
+- De vragenlijst, de puntentelling, de grenzen per risicoprofiel en de standaardallocaties in
+  `backend/app/profiel.py` zijn voorbeeldwaarden. Laat ze beoordelen door de adviseur en
+  compliance voordat ze voor echt advies worden gebruikt.
 
 - De lopende kosten en ISIN-codes in `universum.csv` zijn handmatig ingevuld en staan op
   `kosten_geverifieerd = nee`. Controleer ze tegen het actuele essentiële-informatiedocument van
