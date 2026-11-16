@@ -1,6 +1,7 @@
 import os
 
 os.environ["JWT_GEHEIM"] = "test-geheim-alleen-voor-de-testsuite-0123456789"
+os.environ["VERSLEUTELSLEUTEL"] = "dGVzdHNsZXV0ZWwtdGVzdHNsZXV0ZWwtdGVzdHNsZXU="
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,6 +13,7 @@ from app.db import Basis, sessie
 from app.main import app
 from app.models import Adviseur
 from app.security import hash_wachtwoord
+from app.standaarden import zaai_standaarden
 
 WACHTWOORD = "een-lang-testwachtwoord"
 
@@ -29,6 +31,8 @@ def db():
     Basis.metadata.drop_all(engine)
     Basis.metadata.create_all(engine)
     with Session(engine, expire_on_commit=False) as s:
+        zaai_standaarden(s)
+        s.commit()
         yield s
     Basis.metadata.drop_all(engine)
     engine.dispose()

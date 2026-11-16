@@ -9,6 +9,9 @@ class Instellingen(BaseSettings):
     database_url: str = "postgresql+psycopg://portefeuille:portefeuille@localhost:5432/portefeuille"
     # Verplicht en zonder standaardwaarde: een geraden sleutel maakt elk token vervalsbaar.
     jwt_geheim: str
+    # Fernet-sleutel voor het versleutelen van persoonsgegevens. Verlies van de sleutel maakt
+    # de klantgegevens onleesbaar: bewaar hem buiten de database.
+    versleutelsleutel: str
     token_geldigheid_minuten: int = 480
     max_mislukte_logins: int = 5
     login_blokkade_minuten: int = 15
