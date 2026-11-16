@@ -207,9 +207,18 @@ export default function KlantDetail() {
           ) : (
             <p className="zacht">Voor deze klant is nog geen profiel vastgelegd.</p>
           )}
-          {!klant.gearchiveerd && (
-            <button onClick={() => setFormulier(true)}>{profiel ? "Profiel herzien" : "Profiel vastleggen"}</button>
-          )}
+          <div className="rij">
+            {profiel && (
+              <Link className="knop" to={`/klanten/${id}/portefeuille`}>
+                Portefeuille samenstellen
+              </Link>
+            )}
+            {!klant.gearchiveerd && (
+              <button className={profiel ? "tweede" : ""} onClick={() => setFormulier(true)}>
+                {profiel ? "Profiel herzien" : "Profiel vastleggen"}
+              </button>
+            )}
+          </div>
         </section>
       )}
 

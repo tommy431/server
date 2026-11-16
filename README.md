@@ -9,7 +9,7 @@ Webapplicatie waarmee een beleggingsadviseur een portefeuille op maat samenstelt
 | 1 | Fundament: server, database, inloggen, logboek | klaar |
 | 2 | Data: ETF-lijst, koersbronnen, kwaliteitscontroles | klaar |
 | 3 | Klantprofiel, vragenlijst, risicoprofielen en eerste schermen | klaar |
-| 4 | Portefeuilleconstructie | nog te bouwen |
+| 4 | Portefeuilleconstructie: voorstel, uitsluitingen, toetsing, versies | klaar |
 | 5 | Historische analyse | nog te bouwen |
 | 6 | Verwacht rendement (scenario's) | nog te bouwen |
 | 7 | Rapportage | nog te bouwen |
@@ -71,7 +71,24 @@ Tests: `uv run pytest` (SQLite in het geheugen; zet `TEST_DATABASE_URL` om tegen
 - Elke wijziging van een profiel is een nieuwe versie; eerdere versies blijven bewaard.
 - De modelallocaties per risicoprofiel zijn te beheren in het scherm Modelallocaties.
 
+## Portefeuille
+
+- Het startvoorstel volgt de streefgewichten van het risicoprofiel en vult elke categorie met de
+  startselectie uit `backend/app/portefeuille.py`.
+- Na elke wijziging wordt de portefeuille opnieuw doorgerekend: verdeling naar categorie, regio en
+  sector, lopende kosten en toetsing aan de bandbreedtes en concentratiegrenzen.
+- Een fout (bijvoorbeeld geen 100%) blokkeert vastleggen. Een afwijking van het risicoprofiel of
+  de beperkingen vereist een toelichting, die versleuteld wordt bewaard.
+- Elke vastgelegde versie bewaart een momentopname van banden en doorrekening, zodat het advies
+  later te reconstrueren is.
+- Regio en sector zijn labels van het instrument. Van breed gespreide fondsen is de onderliggende
+  verdeling niet bekend; uitsluitingen op regio of sector en duurzaamheidswensen kunnen daarom
+  niet op het niveau van de onderliggende beleggingen worden getoetst.
+
 ## Nog te controleren
+
+- De startselectie en de concentratiegrenzen in `backend/app/portefeuille.py` zijn
+  voorbeeldwaarden en leggen een beleggingsvisie vast. Laat ze beoordelen door de adviseur.
 
 - De vragenlijst, de puntentelling, de grenzen per risicoprofiel en de standaardallocaties in
   `backend/app/profiel.py` zijn voorbeeldwaarden. Laat ze beoordelen door de adviseur en

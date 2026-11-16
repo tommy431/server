@@ -371,3 +371,88 @@ dd {
     overflow-x: auto;
   }
 }
+
+a.knop {
+  display: inline-block;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  text-decoration: none;
+}
+a.knop:hover {
+  background: var(--accent-donker);
+}
+button.tweede {
+  background: var(--vlak);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 7px 15px;
+}
+button.tweede:hover:not(:disabled) {
+  background: #e8f0fb;
+}
+.melding.goed {
+  background: #e6f4ec;
+  color: #1d6b43;
+}
+.kolommen.ruim {
+  gap: 24px;
+  margin-top: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+dl.smal {
+  grid-template-columns: 1fr;
+  gap: 0;
+}
+dl.smal dd {
+  margin-bottom: 8px;
+}
+ul.lijst {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px;
+}
+ul.lijst li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--rand);
+}
+.bandbalk {
+  position: relative;
+  height: 10px;
+  min-width: 120px;
+  margin-top: 6px;
+  background: var(--achtergrond);
+  border-radius: 5px;
+}
+.bandbalk .band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: #b9d3c6;
+  border-radius: 5px;
+}
+.bandbalk .wijzer {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 3px;
+  margin-left: -1px;
+  background: var(--tekst);
+  border-radius: 2px;
+}
+.bandbalk .wijzer.buiten {
+  background: var(--rood);
+}
+.breed-kolom {
+  width: 40%;
+}
+@media (max-width: 600px) {
+  .breed-kolom {
+    display: none;
+  }
+}

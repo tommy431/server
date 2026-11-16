@@ -53,6 +53,43 @@ export type Uitkomst = {
   bepalende_factor: string;
 };
 
+export type Instrument = {
+  id: number;
+  isin: string;
+  naam: string;
+  categorie: string;
+  regio: string;
+  sector: string;
+  lopende_kosten: number;
+  kosten_geverifieerd: boolean;
+  actief: boolean;
+};
+export type Positie = { isin: string; gewicht: number };
+export type Uitsluiting = { soort: "instrument" | "sector" | "regio"; waarde: string; reden: string };
+export type Doorrekening = {
+  totaal: number;
+  per_categorie: Record<string, number>;
+  per_regio: Record<string, number>;
+  per_sector: Record<string, number>;
+  zakelijke_waarden: number;
+  grootste_positie: number;
+  aantal_instrumenten: number;
+  kosten_pct: number;
+  kosten_per_positie: Record<string, number>;
+  kosten_eur_per_jaar: number;
+  bevindingen: Bevinding[];
+};
+export type Resultaat = {
+  risicoprofiel: string;
+  klantprofiel_versie: number;
+  banden: Record<string, { streef: number; minimum: number; maximum: number }>;
+  beperkingen: Record<string, number>;
+  posities: Positie[];
+  uitsluitingen: Uitsluiting[];
+  doorrekening: Doorrekening;
+};
+export type Versie = Resultaat & { id: number; versie: number; vastgelegd_op: string; toelichting: string | null };
+
 export type Bevinding = { ernst: string; code: string; melding: string };
 export type DataStatus = {
   instrument_id: number;
@@ -155,5 +192,27 @@ export const NAMEN: Record<string, string> = {
   gokken: "Gokken",
   alcohol: "Alcohol",
   kernenergie: "Kernenergie",
+  wereld: "Wereldwijd gespreid",
+  "noord-amerika": "Noord-Amerika",
+  europa: "Europa",
+  "opkomende-markten": "Opkomende markten",
+  "azie-pacific": "Azië-Pacific",
+  breed: "Breed gespreid",
+  energie: "Energie",
+  materialen: "Materialen",
+  industrie: "Industrie",
+  "duurzame-consumptiegoederen": "Duurzame consumptiegoederen",
+  "dagelijkse-consumptiegoederen": "Dagelijkse consumptiegoederen",
+  gezondheidszorg: "Gezondheidszorg",
+  "financiele-dienstverlening": "Financiële dienstverlening",
+  informatietechnologie: "Informatietechnologie",
+  communicatiediensten: "Communicatiediensten",
+  nutsbedrijven: "Nutsbedrijven",
 };
 export const naam = (code: string) => NAMEN[code] ?? code;
+
+/** Basispunten als percentage met Nederlandse komma: 6630 → "66,3%". */
+export const pct = (bp: number) =>
+  `${new Intl.NumberFormat("nl-NL", { maximumFractionDigits: 1 }).format(bp / 100)}%`;
+export const pctKosten = (p: number) =>
+  `${new Intl.NumberFormat("nl-NL", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(p)}%`;
