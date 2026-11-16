@@ -6,20 +6,24 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
+from app.analyse import analyseer, naar_euro
 from app.api.afhankelijkheden import Db, Ingelogd
 from app.api.klanten import _eigen_klant
 from app.logboek import leg_vast
 from app.models import (
+    CATEGORIEEN,
     REGIOS,
     SECTOREN,
     Adviseur,
     Instrument,
     Klant,
     Klantprofiel,
+    Koers,
     Modelallocatie,
     Portefeuille,
     Positie,
     Risicoprofiel,
+    Wisselkoers,
 )
 from app.portefeuille import (
     BEPERKINGEN,
@@ -36,6 +40,18 @@ router = APIRouter(tags=["portefeuille"])
 # "wereld" en "breed" zijn geen regio of sector om uit te sluiten: ze betekenen juist spreiding.
 UITSLUITBARE_REGIOS = tuple(r for r in REGIOS if r != "wereld")
 UITSLUITBARE_SECTOREN = tuple(s for s in SECTOREN if s != "breed")
+
+# De benchmark is de strategische asset allocatie van het risicoprofiel, ingevuld met één breed
+# fonds per categorie. Voorbeeldkeuze; gekozen op lange koershistorie.
+BENCHMARK_FONDSEN = {
+    "aandelen": "IE00B4L5Y983",
+    "obligaties": "IE00B3DKXQ41",
+    "vastgoed": "IE00B1FZS350",
+    "grondstoffen": "DE000A0H0728",
+    "liquiditeiten": "LU0290358497",
+}
+# Het rendement van dit geldmarktfonds geldt als risicovrij rendement voor de Sharpe-ratio.
+RISICOVRIJ_FONDS = "LU0290358497"
 
 
 class UitsluitingIn(BaseModel):
@@ -98,11 +114,24 @@ class ResultaatUit(BaseModel):
     doorrekening: DoorrekeningUit
 
 
+class BenchmarkRegel(BaseModel):
+    categorie: str
+    naam: str
+    gewicht: int  # hele procenten
+
+
+class AnalyseUit(BaseModel):
+    analyse: dict
+    benchmark: list[BenchmarkRegel]
+    risicovrij: str | None
+
+
 class VersieUit(ResultaatUit):
     id: int
     versie: int
     vastgelegd_op: datetime
     toelichting: str | None
+    analyse: AnalyseUit | None
 
 
 class _Context:
@@ -121,7 +150,7 @@ class _Context:
                 status.HTTP_409_CONFLICT, "Leg eerst een klantprofiel vast voor deze klant"
             )
         self.risicoprofiel: Risicoprofiel = db.get(Risicoprofiel, self.profiel.risicoprofiel_id)
-        self.banden = {
+        regels = {
             r.categorie: Band(r.streef, r.minimum, r.maximum)
             for r in db.scalars(
                 select(Modelallocatie).where(
@@ -129,6 +158,8 @@ class _Context:
                 )
             )
         }
+        # Vaste volgorde: de database geeft de regels in willekeurige volgorde terug.
+        self.banden = {c: regels[c] for c in CATEGORIEEN if c in regels}
         self.instrumenten = {i.isin: i for i in db.scalars(select(Instrument))}
         self.fondsen = {
             i.isin: Fonds(
@@ -170,6 +201,63 @@ class _Context:
             uitsluitingen,
             klant_duurzaamheid=self.profiel.duurzaamheid,
             klant_uitsluitingen=tuple(self.profiel.uitsluitingen),
+        )
+
+    def analyseer(self, db: Db, posities: dict[str, int]) -> AnalyseUit:
+        """Historische analyse van de posities tegen de benchmark van het risicoprofiel."""
+        benchmark = {
+            BENCHMARK_FONDSEN[c]: b.streef / 100
+            for c, b in self.banden.items()
+            if b.streef > 0 and BENCHMARK_FONDSEN.get(c) in self.instrumenten
+        }
+        if abs(sum(benchmark.values()) - 1) > 1e-9:
+            benchmark = {}  # een onvolledige benchmark is geen eerlijke vergelijking
+        risicovrij = RISICOVRIJ_FONDS if RISICOVRIJ_FONDS in self.instrumenten else None
+        nodig = set(posities) | set(benchmark) | ({risicovrij} if risicovrij else set())
+
+        wissel: dict[str, dict] = {}
+        reeksen = {}
+        for isin in nodig:
+            instrument = self.instrumenten[isin]
+            reeks = dict(
+                db.execute(
+                    select(Koers.datum, Koers.slot_gecorrigeerd).where(
+                        Koers.instrument_id == instrument.id
+                    )
+                ).all()
+            )
+            valuta = instrument.valuta
+            if valuta != "EUR" and valuta.upper() not in wissel:
+                wissel[valuta.upper()] = dict(
+                    db.execute(
+                        select(Wisselkoers.datum, Wisselkoers.koers).where(
+                            Wisselkoers.valuta == valuta.upper()
+                        )
+                    ).all()
+                )
+            try:
+                reeksen[isin] = naar_euro(reeks, valuta, wissel.get(valuta.upper()))
+            except ValueError:
+                reeksen[isin] = {}
+        uitkomst = analyseer(
+            {isin: gewicht / 10_000 for isin, gewicht in posities.items()},
+            reeksen,
+            {isin: i.naam for isin, i in self.instrumenten.items()},
+            benchmark=benchmark or None,
+            risicovrij=risicovrij,
+        )
+        per_fonds = {v: k for k, v in BENCHMARK_FONDSEN.items()}
+        return AnalyseUit(
+            analyse=uitkomst.als_dict(),
+            benchmark=[
+                BenchmarkRegel(
+                    categorie=per_fonds[isin],
+                    naam=self.instrumenten[isin].naam,
+                    gewicht=round(gewicht * 100),
+                )
+                for isin, gewicht in benchmark.items()
+            ],
+            risicovrij=self.instrumenten[risicovrij].naam if risicovrij else None,
         )
 
     def doorrekening_uit(self, d: Doorrekening | dict) -> DoorrekeningUit:
@@ -223,6 +311,19 @@ def doorrekenen(klant_id: int, invoer: PortefeuilleIn, db: Db, adviseur: Ingelog
     return ctx.resultaat(posities, uitsluitingen, ctx.reken_door(posities, uitsluitingen))
 
 
+@router.post("/klanten/{klant_id}/portefeuille/analyse", response_model=AnalyseUit)
+def analyse(klant_id: int, invoer: PortefeuilleIn, db: Db, adviseur: Ingelogd) -> AnalyseUit:
+    """Historische analyse van een portefeuille. Slaat niets op."""
+    ctx = _Context(db, adviseur, klant_id)
+    uitsluitingen = ctx.uitsluitingen(invoer.uitsluitingen)
+    posities = _posities(invoer.posities)
+    d = ctx.reken_door(posities, uitsluitingen)
+    blokkerend = [b.melding for b in d.fouten if b.code != "uitgesloten"]
+    if blokkerend:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, blokkerend)
+    return ctx.analyseer(db, posities)
+
+
 def _versie_uit(
     db: Db, ctx: _Context, p: Portefeuille, profielversies: dict[int, int]
 ) -> VersieUit:
@@ -235,6 +336,7 @@ def _versie_uit(
         versie=p.versie,
         vastgelegd_op=p.vastgelegd_op,
         toelichting=p.toelichting,
+        analyse=p.analyse,
         risicoprofiel=p.risicoprofiel,
         klantprofiel_versie=profielversies[p.klantprofiel_id],
         banden=p.banden,
@@ -299,6 +401,7 @@ def leg_vast_versie(klant_id: int, invoer: VersieIn, db: Db, adviseur: Ingelogd)
         banden={c: asdict(b) for c, b in ctx.banden.items()},
         uitsluitingen=[asdict(u) for u in uitsluitingen],
         doorrekening=d.als_dict(),
+        analyse=ctx.analyseer(db, posities).model_dump(),
         toelichting=toelichting,
     )
     db.add(portefeuille)

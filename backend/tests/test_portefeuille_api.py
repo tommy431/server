@@ -274,3 +274,131 @@ def test_andere_adviseur_en_niet_ingelogd_hebben_geen_toegang(ingelogd, client, 
             == 401
         )
     assert len(ingelogd.get(pad(klant_id, "versies")).json()) == 1
+
+
+# --- historische analyse ---------------------------------------------------------------
+
+
+def vul_koersen(db, per_jaar=0.05, begin=None, isins=None):
+    """Zet voor de gevraagde (of alle) instrumenten een gelijkmatig groeiende dagreeks."""
+    from datetime import UTC, date, datetime, timedelta
+
+    from sqlalchemy import delete, insert
+
+    from app.models import Koers
+
+    eind = date.today()
+    begin = begin or eind.replace(year=eind.year - 12)
+    nu = datetime.now(UTC)
+    for instrument in db.scalars(select(Instrument)).all():
+        if isins is not None and instrument.isin not in isins:
+            continue
+        db.execute(delete(Koers).where(Koers.instrument_id == instrument.id))
+        db.execute(
+            insert(Koers),
+            [
+                {
+                    "instrument_id": instrument.id,
+                    "datum": begin + timedelta(days=i),
+                    "slot": 100 * (1 + per_jaar) ** (i / 365.25),
+                    "slot_gecorrigeerd": 100 * (1 + per_jaar) ** (i / 365.25),
+                    "bron": "test",
+                    "opgehaald_op": nu,
+                }
+                for i in range((eind - begin).days + 1)
+            ],
+        )
+    db.commit()
+
+
+def test_analyse_met_benchmark_en_risicovrij(ingelogd, klant_id, db):
+    v = ingelogd.post(pad(klant_id, "voorstel"), json={}).json()
+    vul_koersen(db, isins={p["isin"] for p in v["posities"]})
+    r = ingelogd.post(pad(klant_id, "analyse"), json={"posities": v["posities"]})
+    assert r.status_code == 200
+    uit = r.json()
+    assert [(b["categorie"], b["gewicht"]) for b in uit["benchmark"]] == [
+        ("aandelen", 50),
+        ("obligaties", 38),
+        ("vastgoed", 5),
+        ("grondstoffen", 2),
+        ("liquiditeiten", 5),
+    ]
+    assert uit["risicovrij"] == "Xtrackers II EUR Overnight Rate Swap UCITS ETF 1C"
+    a = uit["analyse"]
+    assert a["waarschuwingen"] == [] and len(a["instrumenten"]) == 8
+    assert [p["code"] for p in a["perioden"]] == ["1j", "3j", "5j", "10j", "start"]
+    for p in a["perioden"]:
+        assert p["beschikbaar"]
+        # Alles groeit 5% per jaar, dus portefeuille, benchmark en risicovrij ook.
+        assert p["portefeuille"]["rendement_per_jaar"] == pytest.approx(0.05, abs=2e-4)
+        assert p["benchmark"]["rendement_per_jaar"] == pytest.approx(0.05, abs=2e-4)
+        assert p["risicovrij_per_jaar"] == pytest.approx(0.05, abs=2e-4)
+    assert len(a["kalenderjaren"]) == 11
+    assert ingelogd.get(pad(klant_id, "versies")).json() == []
+
+
+def test_analyse_zonder_koersen_en_met_korte_historie(ingelogd, klant_id, db):
+    from datetime import date
+
+    v = ingelogd.post(pad(klant_id, "voorstel"), json={}).json()
+    a = ingelogd.post(pad(klant_id, "analyse"), json={"posities": v["posities"]}).json()["analyse"]
+    assert a["peildatum"] is None and a["perioden"] == []
+    assert a["waarschuwingen"][0].startswith("Geen koersen beschikbaar voor:")
+
+    vul_koersen(db)
+    vandaag = date.today()
+    vul_koersen(db, begin=vandaag.replace(year=vandaag.year - 2), isins={EM})
+    a = ingelogd.post(pad(klant_id, "analyse"), json={"posities": v["posities"]}).json()["analyse"]
+    beschikbaar = {p["code"]: p["beschikbaar"] for p in a["perioden"]}
+    assert beschikbaar == {"1j": True, "3j": False, "5j": False, "10j": False, "start": True}
+    reden = next(p["reden"] for p in a["perioden"] if p["code"] == "3j")
+    assert reden.startswith(
+        "iShares Core MSCI EM IMI UCITS ETF (Acc) heeft bruikbare koersen vanaf"
+    )
+
+
+def test_analyse_weigert_portefeuille_die_niet_op_100_uitkomt(ingelogd, klant_id):
+    posities = gewichten(ingelogd.post(pad(klant_id, "voorstel"), json={}).json())
+    posities[GELD] -= 100
+    r = ingelogd.post(pad(klant_id, "analyse"), json={"posities": als_invoer(posities)})
+    assert r.status_code == 422 and "99%" in r.json()["detail"][0]
+
+
+def test_vastgelegde_versie_bewaart_analyse_ook_als_koersen_later_wijzigen(ingelogd, klant_id, db):
+    v = ingelogd.post(pad(klant_id, "voorstel"), json={}).json()
+    vul_koersen(db, per_jaar=0.05)
+    r = ingelogd.post(pad(klant_id, "versies"), json={"posities": v["posities"]})
+    bewaard = r.json()["analyse"]
+    assert bewaard["analyse"]["perioden"][0]["portefeuille"]["rendement_per_jaar"] == pytest.approx(
+        0.05, abs=2e-4
+    )
+    assert bewaard["benchmark"][0] == {
+        "categorie": "aandelen",
+        "naam": "iShares Core MSCI World UCITS ETF (Acc)",
+        "gewicht": 50,
+    }
+    vul_koersen(db, per_jaar=0.20)
+    assert ingelogd.get(pad(klant_id, "versies")).json()[0]["analyse"] == bewaard
+    nu = ingelogd.post(pad(klant_id, "analyse"), json={"posities": v["posities"]}).json()
+    assert nu["analyse"]["perioden"][0]["portefeuille"]["rendement_per_jaar"] > 0.19
+
+
+def test_analyse_alleen_voor_eigen_klant(ingelogd, client, klant_id, db):
+    v = ingelogd.post(pad(klant_id, "voorstel"), json={}).json()
+    db.add(
+        Adviseur(email="ander@voorbeeld.nl", naam="A", wachtwoord_hash=hash_wachtwoord(WACHTWOORD))
+    )
+    db.commit()
+    token = client.post(
+        "/auth/login", json={"email": "ander@voorbeeld.nl", "wachtwoord": WACHTWOORD}
+    ).json()["access_token"]
+    body = {"posities": v["posities"]}
+    r = client.post(
+        pad(klant_id, "analyse"), json=body, headers={"Authorization": f"Bearer {token}"}
+    )
+    assert r.status_code == 404
+    assert (
+        client.post(pad(klant_id, "analyse"), json=body, headers={"Authorization": ""}).status_code
+        == 401
+    )

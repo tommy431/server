@@ -209,6 +209,8 @@ class Portefeuille(Basis):
     banden: Mapped[dict] = mapped_column(JSON)
     uitsluitingen: Mapped[list] = mapped_column(JSON)
     doorrekening: Mapped[dict] = mapped_column(JSON)
+    # Historische analyse op het moment van vastleggen; leeg als er geen koersen waren.
+    analyse: Mapped[dict | None] = mapped_column(JSON)
     toelichting: Mapped[str | None] = mapped_column(VersleuteldeTekst)
 
 
