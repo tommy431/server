@@ -28,6 +28,7 @@ export default function Opvolging() {
   const [regels, setRegels] = useState<Regel[]>([]);
   const [kas, setKas] = useState("0");
   const [peildatum, setPeildatum] = useState(vandaag());
+  const [inleesMeldingen, setInleesMeldingen] = useState<string[]>([]);
 
   const laad = useCallback(async () => {
     try {
@@ -60,7 +61,35 @@ export default function Opvolging() {
     setRegels(basis.length ? basis : [{ isin: "", aantal: "" }]);
     setKas(String(o?.bezit?.kas_eur ?? 0));
     setPeildatum(vandaag());
+    setInleesMeldingen([]);
     setBezitFormulier(true);
+  }
+
+  async function leesBestand(bestand: File | undefined) {
+    if (!bestand) return;
+    const bytes = await bestand.arrayBuffer();
+    // Exports uit Excel zijn vaak Windows-1252 in plaats van UTF-8.
+    let tekst: string;
+    try {
+      tekst = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
+      tekst = new TextDecoder("windows-1252").decode(bytes);
+    }
+    try {
+      const r = await api<{ posities: { isin: string; aantal: number }[]; meldingen: string[] }>(
+        `/klanten/${id}/bezit/inlezen`,
+        { methode: "POST", body: { tekst } },
+      );
+      if (r.posities.length) setRegels(r.posities.map((p) => ({ isin: p.isin, aantal: String(p.aantal).replace(".", ",") })));
+      setInleesMeldingen([
+        r.posities.length
+          ? `${r.posities.length} fonds(en) ingelezen uit ${bestand.name}. Controleer de aantallen en vul het geldsaldo in.`
+          : `Uit ${bestand.name} zijn geen fondsen overgenomen.`,
+        ...r.meldingen,
+      ]);
+    } catch (f) {
+      setFouten(meldingenVan(f));
+    }
   }
 
   async function bewaarBezit(e: FormEvent) {
@@ -145,6 +174,23 @@ export default function Opvolging() {
                 Neem de aantallen over van het meest recente depotoverzicht van de klant. De waarde wordt berekend met
                 de laatst bekende slotkoers.
               </p>
+              <label className="smal-veld">
+                Depotoverzicht inlezen (CSV, optioneel)
+                <input type="file" accept=".csv,.txt,text/csv" onChange={(e) => void leesBestand(e.target.files?.[0])} />
+              </label>
+              <p className="zacht">
+                Een export van de bank of broker met een kolom met het ISIN en een kolom &lsquo;Aantal&rsquo; (of
+                &lsquo;Stukken&rsquo;, &lsquo;Quantity&rsquo;). Er wordt pas iets opgeslagen als u op Opslaan klikt.
+              </p>
+              {inleesMeldingen.length > 0 && (
+                <div className="melding let-op">
+                  <ul>
+                    {inleesMeldingen.map((m) => (
+                      <li key={m}>{m}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <label className="smal-veld">
                 Peildatum
                 <input type="date" value={peildatum} max={vandaag()} onChange={(e) => setPeildatum(e.target.value)} required />

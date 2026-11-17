@@ -187,6 +187,12 @@ Via **Opvolging** bij een klant, en het overzicht **Signalen** in het menu.
 - **Werkelijk bezit:** de adviseur neemt de aantallen stukken en het geldsaldo over van het
   depotoverzicht van de klant, met een peildatum. Elke opgave is een nieuwe versie. De waarde wordt
   berekend tegen de laatst bekende slotkoers (euro-fondsen).
+- **Depotoverzicht inlezen:** een CSV-export van de bank of broker vult het formulier, ter controle
+  vóór het opslaan. Kolommen worden zelf gevonden: het ISIN aan de vorm en het controlecijfer, het
+  aantal aan een kolomkop als ‘Aantal’, ‘Stukken’ of ‘Quantity’. Scheidingsteken (; , of tab),
+  decimaalteken en tekenset (UTF-8 of Windows-1252) worden per bestand bepaald. Regels zonder ISIN
+  (totalen, geldsaldo) worden overgeslagen, dubbele fondsen opgeteld, en fondsen buiten de
+  fondsenlijst gemeld. Het geldsaldo vult de adviseur zelf in.
 - **Vergelijking met het advies:** per fonds het werkelijke gewicht naast het geadviseerde, en per
   beleggingscategorie het gewicht tegen de bandbreedtes van de laatst vastgelegde portefeuilleversie.
 - **Herbalanceringsvoorstel:** terug naar de gewichten van het advies, in hele stukken. Eerst

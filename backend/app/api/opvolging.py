@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 
 from app.api.afhankelijkheden import Db, Ingelogd
 from app.api.klanten import _eigen_klant
+from app.bezitimport import MAX_TEKENS, lees_bezit
 from app.logboek import leg_vast
 from app.models import (
     Adviseur,
@@ -35,6 +36,21 @@ class BezitIn(BaseModel):
     peildatum: date
     posities: list[BezitRegel]
     kas_eur: float = Field(ge=0, le=1e10)
+
+
+class InlezenIn(BaseModel):
+    tekst: str = Field(max_length=MAX_TEKENS)
+
+
+class IngelezenRegel(BaseModel):
+    isin: str
+    naam: str
+    aantal: float
+
+
+class InlezenUit(BaseModel):
+    posities: list[IngelezenRegel]
+    meldingen: list[str]
 
 
 class EvaluatieIn(BaseModel):
@@ -267,6 +283,31 @@ def leg_bezit_vast(klant_id: int, invoer: BezitIn, db: Db, adviseur: Ingelogd) -
     )
     db.commit()
     return {"id": opgave.id}
+
+
+@router.post("/klanten/{klant_id}/bezit/inlezen", response_model=InlezenUit)
+def bezit_inlezen(klant_id: int, invoer: InlezenIn, db: Db, adviseur: Ingelogd) -> InlezenUit:
+    """Leest een depotoverzicht (CSV) voor controle in het formulier. Slaat niets op."""
+    _eigen_klant(db, adviseur, klant_id)
+    r = lees_bezit(invoer.tekst)
+    namen = dict(db.execute(select(Instrument.isin, Instrument.naam)).all())
+    onbekend = [i for i in r.posities if i not in namen]
+    meldingen = list(r.meldingen)
+    if onbekend:
+        meldingen.insert(
+            0,
+            "Niet in de fondsenlijst, dus niet overgenomen: "
+            + ", ".join(onbekend)
+            + ". Laat deze fondsen eerst toevoegen of neem ze buiten het overzicht op.",
+        )
+    return InlezenUit(
+        posities=[
+            IngelezenRegel(isin=i, naam=namen[i], aantal=a)
+            for i, a in r.posities.items()
+            if i in namen
+        ],
+        meldingen=meldingen,
+    )
 
 
 @router.post(

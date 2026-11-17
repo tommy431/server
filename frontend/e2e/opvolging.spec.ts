@@ -54,3 +54,30 @@ test("bezit vastleggen, vergelijken met het advies en evalueren", async ({ page 
   await geenHorizontaleScroll(page);
   if (process.env.SCHERMAFDRUK) await page.screenshot({ path: `${process.env.SCHERMAFDRUK}/opvolging-telefoon.png`, fullPage: true });
 });
+
+test("bezit inlezen uit een depotoverzicht", async ({ page }) => {
+  test.setTimeout(120_000);
+  await inloggen(page, ADVISEUR);
+  const naam = `Inlezen ${Date.now()}`;
+  await klantMetProfiel(page, naam);
+  await page.getByRole("link", { name: "Portefeuille samenstellen" }).click();
+  await expect(page.getByText("past binnen het risicoprofiel")).toBeVisible();
+  await page.getByLabel("Overige kosten % per jaar (advies, beheer, bewaring)").fill("0,5");
+  await page.getByRole("button", { name: "Portefeuille vastleggen" }).click();
+  await expect(page.getByText("Versie 1 is vastgelegd.")).toBeVisible();
+  await page.getByRole("link", { name: `← ${naam}` }).click();
+  await page.getByRole("link", { name: "Opvolging" }).click();
+
+  await page.getByRole("button", { name: "Bezit vastleggen" }).click();
+  const csv = "Product;ISIN;Aantal;Waarde\nWereld;IE00B4L5Y983;1.250;122.650,00\nApple;US0378331005;10;2.000,00\nTotaal;;;124.650,00\n";
+  await page.getByLabel("Depotoverzicht inlezen (CSV, optioneel)").setInputFiles({
+    name: "depot.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(csv, "latin1"),
+  });
+  await expect(page.getByText("1 fonds(en) ingelezen uit depot.csv")).toBeVisible();
+  await expect(page.getByText(/Niet in de fondsenlijst.*US0378331005/)).toBeVisible();
+  await expect(page.getByLabel("Aantal iShares Core MSCI World UCITS ETF (Acc)")).toHaveValue("1250");
+  await page.getByRole("button", { name: "Opslaan" }).click();
+  await expect(page.getByRole("cell", { name: "1.250" })).toBeVisible();
+});

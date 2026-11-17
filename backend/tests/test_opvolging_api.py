@@ -166,3 +166,16 @@ def test_andermans_klant_niet_zichtbaar(client, ingelogd, klant_id, db):
         == 404
     )
     assert client.get("/signalen", headers=h).json() == []
+
+
+def test_bezit_inlezen_uit_csv(ingelogd, klant_id, db):
+    tekst = f"Product;ISIN;Aantal\nWereld;{WERELD};1.250\nApple;US0378331005;10\nGeldsaldo;;\n"
+    r = ingelogd.post(f"/klanten/{klant_id}/bezit/inlezen", json={"tekst": tekst})
+    assert r.status_code == 200
+    assert [(p["isin"], p["aantal"]) for p in r.json()["posities"]] == [(WERELD, 1250)]
+    assert r.json()["meldingen"][0].startswith(
+        "Niet in de fondsenlijst, dus niet overgenomen: US0378331005"
+    )
+    # Er is niets opgeslagen.
+    assert ingelogd.get(f"/klanten/{klant_id}/opvolging").json()["bezit"] is None
+    assert "bezit_vastgelegd" not in db.scalars(select(Logboek.actie)).all()
