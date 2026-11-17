@@ -395,7 +395,7 @@ def anonimiseer(klant_id: int, db: Db, adviseur: Ingelogd) -> KlantUit:
 
     Naam, e-mailadres, geboortedatum, beleggingsdoel en alle toelichtingen worden gewist. De
     cijfers van profielen en portefeuilles blijven bewaard, maar zijn niet meer tot een persoon
-    te herleiden. Dit kan niet ongedaan worden gemaakt.
+    te herleiden. Ook de PDF-rapporten worden gewist. Dit kan niet ongedaan worden gemaakt.
     """
     klant = _eigen_klant(db, adviseur, klant_id)
     if klant.geanonimiseerd_op is not None:
@@ -423,6 +423,9 @@ def anonimiseer(klant_id: int, db: Db, adviseur: Ingelogd) -> KlantUit:
         portefeuille.uitsluitingen = [
             {**u, "reden": VERWIJDERD if u.get("reden") else ""} for u in portefeuille.uitsluitingen
         ]
+    from app.api.rapporten import verwijder_pdfs
+
+    verwijder_pdfs(db, klant.id)
     leg_vast(
         db, "klant_geanonimiseerd", adviseur_id=adviseur.id, entiteit="klant", entiteit_id=klant.id
     )

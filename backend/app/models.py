@@ -15,7 +15,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Basis
-from app.versleuteling import VersleuteldeTekst
+from app.versleuteling import VersleuteldeBytes, VersleuteldeTekst
 
 CATEGORIEEN = ("aandelen", "obligaties", "vastgoed", "grondstoffen", "liquiditeiten")
 REGIOS = ("wereld", "noord-amerika", "europa", "opkomende-markten", "azie-pacific")
@@ -267,3 +267,28 @@ class Rente(Basis):
     reeks: Mapped[str] = mapped_column(String(10))  # "ESTR" of "EONIA"
     bron: Mapped[str] = mapped_column(String(30))
     opgehaald_op: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class Rapport(Basis):
+    """Een adviesrapport (PDF) bij een vastgelegde portefeuilleversie. Wordt niet gewijzigd.
+
+    De PDF bevat persoonsgegevens en staat versleuteld opgeslagen. Bij anonimiseren wordt de PDF
+    verwijderd; de vingerafdruk (SHA-256) blijft, zodat later aantoonbaar is welk rapport er was.
+    """
+
+    __tablename__ = "rapport"
+    __table_args__ = (UniqueConstraint("portefeuille_id", "volgnummer"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    portefeuille_id: Mapped[int] = mapped_column(
+        ForeignKey("portefeuille.id", ondelete="CASCADE"), index=True
+    )
+    volgnummer: Mapped[int] = mapped_column(Integer)
+    opgesteld_op: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    opgesteld_door: Mapped[int] = mapped_column(ForeignKey("adviseur.id"))
+    sha256: Mapped[str] = mapped_column(String(64))
+    grootte: Mapped[int] = mapped_column(Integer)
+    pdf: Mapped[bytes | None] = mapped_column(VersleuteldeBytes)
+    verwijderd_op: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
