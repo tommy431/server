@@ -36,7 +36,7 @@ from app.portefeuille import (
     maak_voorstel,
     reken_door,
 )
-from app.scenario import simuleer
+from app.scenario import benodigde_storting, simuleer, slecht_jaar
 from app.standaarden import STANDAARD_STRESS
 
 router = APIRouter(tags=["portefeuille"])
@@ -158,6 +158,11 @@ class ScenarioUit(BaseModel):
     # Hypothetische zware crisis: directe waardeverandering van de mix en het verlies op de inleg.
     crisis_rendement: float | None = None
     crisis_verlies_eur: int | None = None
+    # Rendement dat in 1 op de 20 jaren niet wordt gehaald, na kosten, en wat dat op de inleg betekent.
+    slecht_jaar: float | None = None
+    slecht_jaar_eur: int | None = None
+    # Alleen bij vastleggen: wat andere keuzes opleveren (langer beleggen, storting, profiel).
+    varianten: dict | None = None
 
 
 class VersieUit(ResultaatUit):
@@ -340,7 +345,12 @@ class _Context:
         )
 
     def scenario(
-        self, db: Db, d: Doorrekening, overige_kosten_pct: float, belasting_pct: float = 0.0
+        self,
+        db: Db,
+        d: Doorrekening,
+        overige_kosten_pct: float,
+        belasting_pct: float = 0.0,
+        varianten: bool = False,
     ) -> tuple[ScenarioUit, int]:
         """Monte Carlo-scenario's voor de verdeling naar categorie, met de huidige aannames."""
         rij = huidige(db)
@@ -370,6 +380,12 @@ class _Context:
         if d.totaal != 10_000:
             uit.reden = "De gewichten tellen niet op tot 100%"
             return uit, rij.id
+        kosten = d.kosten_pct + overige_kosten_pct
+        aannames = als_aannames(rij)
+        uit.slecht_jaar = slecht_jaar(gewichten, aannames, kosten)
+        uit.slecht_jaar_eur = round(-uit.slecht_jaar * p.inleg_eur)
+        if varianten:
+            uit.varianten = self._varianten(db, gewichten, aannames, kosten, belasting_pct)
         uit.scenario = simuleer(
             gewichten,
             als_aannames(rij),
@@ -381,6 +397,83 @@ class _Context:
             doelvermogen=p.doelvermogen_eur,
         ).als_dict()
         return uit, rij.id
+
+    def _varianten(
+        self, db: Db, gewichten: dict[str, float], aannames, kosten: float, belasting: float
+    ) -> dict:
+        """Wat andere keuzes opleveren, met dezelfde aannames en kosten."""
+        p = self.profiel
+        koopkracht = p.doel_in_koopkracht
+        kolom = "reeel" if koopkracht else "nominaal"
+
+        def reken(g: dict[str, float], horizon: int) -> dict:
+            s = simuleer(
+                g,
+                aannames,
+                horizon_jaren=horizon,
+                inleg=p.inleg_eur,
+                storting_per_maand=p.storting_per_maand_eur,
+                kosten_pct=kosten,
+                belasting_pct=belasting,
+                doelvermogen=p.doelvermogen_eur,
+            )
+            eind = getattr(s.jaren[-1], kolom)
+            kans = s.kans_doel_reeel if koopkracht else s.kans_doel_nominaal
+            return {
+                "horizon_jaren": horizon,
+                "kans_doel": kans,
+                "slecht": eind[0],
+                "midden": eind[1],
+                "goed": eind[2],
+                "slecht_jaar": slecht_jaar(g, aannames, kosten),
+            }
+
+        uit: dict = {"maatstaf": "koopkracht" if koopkracht else "nominaal", "profielen": []}
+        if p.horizon_jaren + 5 <= 60:
+            uit["langer"] = reken(gewichten, p.horizon_jaren + 5)
+        if p.doelvermogen_eur:
+            nodig = benodigde_storting(
+                gewichten,
+                aannames,
+                horizon_jaren=p.horizon_jaren,
+                inleg=p.inleg_eur,
+                kosten_pct=kosten,
+                belasting_pct=belasting,
+                doelvermogen=p.doelvermogen_eur,
+                in_koopkracht=koopkracht,
+            )
+            # Afronden op hele tientjes naar boven.
+            uit["storting_voor_kans"] = {str(k): -(-round(v) // 10) * 10 for k, v in nodig.items()}
+
+        # Profielen ter vergelijking: het afgeleide profiel (als er is afgeweken) en één stap
+        # defensiever. Met de streefgewichten van dat moment; kosten gelijk verondersteld.
+        profielen = {r.niveau: r for r in db.scalars(select(Risicoprofiel))}
+        gekozen = self.risicoprofiel
+        afgeleid = db.get(Risicoprofiel, p.afgeleid_risicoprofiel_id)
+        te_vergelijken = [
+            n
+            for n in {gekozen.niveau - 1, afgeleid.niveau}
+            if n in profielen and n != gekozen.niveau
+        ]
+        for niveau in sorted(te_vergelijken):
+            prof = profielen[niveau]
+            streef = {
+                m.categorie: m.streef / 100
+                for m in db.scalars(
+                    select(Modelallocatie).where(Modelallocatie.risicoprofiel_id == prof.id)
+                )
+                if m.streef
+            }
+            if abs(sum(streef.values()) - 1) > 1e-9:
+                continue
+            uit["profielen"].append(
+                {
+                    "code": prof.code,
+                    "afgeleid": prof.id == afgeleid.id,
+                    **reken(streef, p.horizon_jaren),
+                }
+            )
+        return uit
 
     def doorrekening_uit(self, d: Doorrekening | dict) -> DoorrekeningUit:
         gegevens = d.als_dict() if isinstance(d, Doorrekening) else d
@@ -526,7 +619,7 @@ def leg_vast_versie(klant_id: int, invoer: VersieIn, db: Db, adviseur: Ingelogd)
         )
 
     scenario_uit, aannameset_id = ctx.scenario(
-        db, d, invoer.overige_kosten_pct, invoer.belasting_pct
+        db, d, invoer.overige_kosten_pct, invoer.belasting_pct, varianten=True
     )
     vorige = db.scalar(
         select(func.max(Portefeuille.versie)).where(Portefeuille.klant_id == klant_id)

@@ -247,3 +247,99 @@ def test_ongeldige_kosten_of_heffing():
         sim({"aandelen": 1.0}, aannames(), kosten_pct=-1)
     with pytest.raises(ValueError):
         sim({"aandelen": 1.0}, aannames(), belasting_pct=100)
+
+
+def test_eindwaarden_komen_overeen_met_simuleer():
+    from app.scenario import eindwaarden
+
+    a = aannames()
+    g = {"aandelen": 0.6, "obligaties": 0.4}
+    s = sim(g, a, storting_per_maand=200, kosten_pct=0.3, belasting_pct=1.0)
+    e = eindwaarden(
+        g,
+        a,
+        horizon_jaren=10,
+        inleg=100_000,
+        storting_per_maand=200,
+        kosten_pct=0.3,
+        belasting_pct=1.0,
+    )
+    assert np.percentile(e, [5, 50, 95]) == pytest.approx(s.jaren[-1].nominaal)
+
+
+def test_eindvermogen_is_lineair_in_inleg_en_storting():
+    from app.scenario import eindwaarden
+
+    a, g = aannames(), {"aandelen": 0.6, "obligaties": 0.4}
+    basis = {"horizon_jaren": 5, "kosten_pct": 0.5}
+    alleen_inleg = eindwaarden(g, a, inleg=1.0, storting_per_maand=0.0, **basis)
+    alleen_storting = eindwaarden(g, a, inleg=0.0, storting_per_maand=1.0, **basis)
+    samen = eindwaarden(g, a, inleg=50_000, storting_per_maand=300, **basis)
+    assert samen == pytest.approx(50_000 * alleen_inleg + 300 * alleen_storting)
+
+
+@pytest.mark.parametrize("in_koopkracht", [False, True])
+def test_benodigde_storting_haalt_het_doel_met_de_gevraagde_kans(in_koopkracht):
+    from app.scenario import benodigde_storting
+
+    a, g = aannames(), {"aandelen": 0.6, "obligaties": 0.4}
+    nodig = benodigde_storting(
+        g,
+        a,
+        horizon_jaren=15,
+        inleg=50_000,
+        kosten_pct=0.2,
+        belasting_pct=0.0,
+        doelvermogen=200_000,
+        in_koopkracht=in_koopkracht,
+        kansen=(0.5, 0.75),
+    )
+    assert 0 < nodig[0.5] < nodig[0.75]
+    for kans, storting in nodig.items():
+        s = sim(
+            g,
+            a,
+            horizon_jaren=15,
+            inleg=50_000,
+            storting_per_maand=storting,
+            kosten_pct=0.2,
+            doelvermogen=200_000,
+        )
+        gehaald = s.kans_doel_reeel if in_koopkracht else s.kans_doel_nominaal
+        assert gehaald == pytest.approx(kans, abs=0.005)
+
+
+def test_geen_storting_nodig_als_de_inleg_volstaat():
+    from app.scenario import benodigde_storting
+
+    nodig = benodigde_storting(
+        {"aandelen": 1.0},
+        aannames(),
+        horizon_jaren=20,
+        inleg=100_000,
+        kosten_pct=0.0,
+        belasting_pct=0.0,
+        doelvermogen=50_000,
+        in_koopkracht=False,
+    )
+    assert nodig == {0.5: 0.0, 0.75: 0.0}
+
+
+def test_slecht_jaar_handmatig_bij_een_categorie():
+    import math
+
+    from app.scenario import slecht_jaar
+
+    # Eén categorie: jaarrendement lognormaal met mu en s per jaar; 5e percentiel = exp(mu − 1,645 s) − 1.
+    r, v = 0.07, 0.18
+    a = aannames(r=(r, 0.03), v=(v, 0.05))
+    s_log = math.sqrt(math.log1p((v / (1 + r)) ** 2))
+    mu = math.log1p(r) - s_log**2 / 2
+    assert slecht_jaar({"aandelen": 1.0}, a, 0.0) == pytest.approx(
+        math.exp(mu - 1.6449 * s_log) - 1, abs=0.005
+    )
+
+
+def test_kans_op_minder_dan_ingelegd_in_koopkracht_is_groter():
+    s = sim({"aandelen": 0.6, "obligaties": 0.4}, aannames(inflatie=0.03), storting_per_maand=100)
+    assert s.kans_minder_dan_ingelegd_reeel > s.kans_minder_dan_ingelegd

@@ -28,6 +28,8 @@ class RapportUit(BaseModel):
     sha256: str
     grootte: int
     beschikbaar: bool
+    status: str
+    concept_redenen: list[str]
 
 
 def rapportgegevens(db: Db, klant: Klant, portefeuille: Portefeuille, opgesteld_op: date) -> dict:
@@ -53,25 +55,7 @@ def rapportgegevens(db: Db, klant: Klant, portefeuille: Portefeuille, opgesteld_
                 / pos.gewicht,
             }
         )
-    waarschuwingen = []
-    if (
-        (portefeuille.scenario or {})
-        .get("aannames", {})
-        .get("bron", "")
-        .startswith("Voorbeeldwaarden")
-    ):
-        waarschuwingen.append(
-            "Concept: de scenario's in dit rapport rekenen met voorbeeldaannames zonder gepubliceerde "
-            "bron. Niet aan de klant verstrekken voordat de aannames zijn vervangen."
-        )
-    if any(
-        b["code"] == "kosten_ongeverifieerd"
-        for b in portefeuille.doorrekening.get("bevindingen", [])
-    ):
-        waarschuwingen.append(
-            "Concept: de lopende kosten van een of meer fondsen zijn niet gecontroleerd tegen de "
-            "fondsdocumentatie."
-        )
+    redenen = concept_redenen(portefeuille)
     return {
         "klant": {"naam": klant.naam},
         "adviseur": adviseur.naam,
@@ -107,9 +91,31 @@ def rapportgegevens(db: Db, klant: Klant, portefeuille: Portefeuille, opgesteld_
         },
         "posities": posities,
         "fondsnamen": {i.isin: i.naam for i in instrumenten.values()},
-        "waarschuwingen_vooraf": waarschuwingen,
+        "concept": bool(redenen),
+        "concept_redenen": redenen,
         "databron": DATABRON,
     }
+
+
+def concept_redenen(portefeuille: Portefeuille) -> list[str]:
+    """Punten waardoor het rapport nog niet aan de klant mag. Deze staan niet in de PDF zelf."""
+    redenen = []
+    scenario = portefeuille.scenario or {}
+    if scenario.get("aannames", {}).get("bron", "").startswith("Voorbeeldwaarden"):
+        redenen.append("De scenario's rekenen met voorbeeldaannames zonder gepubliceerde bron.")
+    if not scenario.get("scenario"):
+        redenen.append("Er zijn geen toekomstscenario's berekend.")
+    bevindingen = portefeuille.doorrekening.get("bevindingen", [])
+    if any(b["code"] == "kosten_ongeverifieerd" for b in bevindingen):
+        redenen.append(
+            "De lopende kosten van een of meer fondsen zijn niet gecontroleerd tegen de "
+            "fondsdocumentatie."
+        )
+    if any(b["code"] == "duurzaamheid" for b in bevindingen):
+        redenen.append(
+            "De duurzaamheidswensen van de klant zijn niet automatisch getoetst; controleer de fondsen."
+        )
+    return redenen
 
 
 def _code(db: Db, risicoprofiel_id: int) -> str:
@@ -128,6 +134,8 @@ def _uit(r: Rapport, versie: int, namen: dict[int, str]) -> RapportUit:
         sha256=r.sha256,
         grootte=r.grootte,
         beschikbaar=r.pdf is not None,
+        status=r.status,
+        concept_redenen=r.concept_redenen or [],
     )
 
 
@@ -150,7 +158,8 @@ def maak(klant_id: int, versie: int, db: Db, adviseur: Ingelogd) -> RapportUit:
     )
     if portefeuille is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Portefeuilleversie niet gevonden")
-    pdf = maak_rapport(rapportgegevens(db, klant, portefeuille, date.today()))
+    gegevens = rapportgegevens(db, klant, portefeuille, date.today())
+    pdf = maak_rapport(gegevens)
     vorige = db.scalar(
         select(func.max(Rapport.volgnummer)).where(Rapport.portefeuille_id == portefeuille.id)
     )
@@ -161,6 +170,8 @@ def maak(klant_id: int, versie: int, db: Db, adviseur: Ingelogd) -> RapportUit:
         sha256=hashlib.sha256(pdf).hexdigest(),
         grootte=len(pdf),
         pdf=pdf,
+        status="concept" if gegevens["concept"] else "definitief",
+        concept_redenen=gegevens["concept_redenen"],
     )
     db.add(rapport)
     db.flush()
@@ -170,7 +181,12 @@ def maak(klant_id: int, versie: int, db: Db, adviseur: Ingelogd) -> RapportUit:
         adviseur_id=adviseur.id,
         entiteit="klant",
         entiteit_id=klant_id,
-        details={"versie": versie, "rapport": rapport.id, "sha256": rapport.sha256},
+        details={
+            "versie": versie,
+            "rapport": rapport.id,
+            "sha256": rapport.sha256,
+            "status": rapport.status,
+        },
     )
     db.commit()
     return _uit(rapport, versie, _adviseursnamen(db))

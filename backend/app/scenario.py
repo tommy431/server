@@ -115,6 +115,8 @@ class Scenario:
     kans_doel_nominaal: float | None
     kans_doel_reeel: float | None
     kans_minder_dan_ingelegd: float
+    # Zelfde kans, maar vermogen en inleg beide in koopkracht van vandaag.
+    kans_minder_dan_ingelegd_reeel: float
     mediaan_zonder_kosten: float
     kosten_effect_mediaan: float  # mediaan eindvermogen zonder kosten min met kosten
     belasting_effect_mediaan: float  # mediaan eindvermogen zonder heffing min met heffing
@@ -232,8 +234,95 @@ def simuleer(
         kans_doel_nominaal=float(np.mean(eind >= doelvermogen)) if doelvermogen else None,
         kans_doel_reeel=float(np.mean(eind_reeel >= doelvermogen)) if doelvermogen else None,
         kans_minder_dan_ingelegd=float(np.mean(eind < ingelegd)),
+        kans_minder_dan_ingelegd_reeel=float(np.mean(eind_reeel < jaren[-1].ingelegd_reeel)),
         mediaan_zonder_kosten=mediaan_zonder,
         kosten_effect_mediaan=mediaan_zonder - mediaan,
         belasting_effect_mediaan=float(np.median(zonder_heffing)) - mediaan,
         inflatie_effect_mediaan=mediaan - float(np.median(eind_reeel)),
     )
+
+
+def _voorbereiding(gewichten: dict[str, float], aannames: Aannames):
+    fouten = controleer(aannames)
+    if fouten:
+        raise AannameFout(fouten)
+    cats = aannames.categorieen
+    w = np.array([gewichten.get(c, 0.0) for c in cats])
+    r = np.array([aannames.rendement[c] for c in cats])
+    v = np.array([aannames.volatiliteit[c] for c in cats])
+    s = np.sqrt(np.log1p((v / (1 + r)) ** 2))
+    mu = np.log1p(r) - s**2 / 2
+    eigen, vectoren = np.linalg.eigh(np.outer(s, s) * aannames.matrix() / 12)
+    return w, mu, vectoren * np.sqrt(np.clip(eigen, 0, None))
+
+
+def eindwaarden(
+    gewichten: dict[str, float],
+    aannames: Aannames,
+    *,
+    horizon_jaren: int,
+    inleg: float,
+    storting_per_maand: float,
+    kosten_pct: float,
+    belasting_pct: float = 0.0,
+    paden: int = STANDAARD_PADEN,
+    zaad: int = STANDAARD_ZAAD,
+) -> np.ndarray:
+    """Nominaal eindvermogen per pad, met hetzelfde model als `simuleer`.
+
+    Met hetzelfde zaad zijn de toevalsgetallen gelijk, ongeacht inleg en storting. Omdat het
+    eindvermogen lineair is in inleg en storting, maakt dat exacte vergelijkingen mogelijk.
+    """
+    w, mu, factor = _voorbereiding(gewichten, aannames)
+    rng = np.random.default_rng(zaad)
+    f = ((1 - kosten_pct / 100) * (1 - belasting_pct / 100)) ** (1 / 12)
+    bezit = np.outer(np.full(paden, float(inleg)), w)
+    for maand in range(1, horizon_jaren * 12 + 1):
+        z = rng.standard_normal((paden, len(w)))
+        bezit = bezit * np.exp(mu / 12 + z @ factor.T) * f + storting_per_maand * w
+        if maand % 12 == 0:
+            bezit = np.outer(bezit.sum(axis=1), w)
+    return bezit.sum(axis=1)
+
+
+def slecht_jaar(gewichten: dict[str, float], aannames: Aannames, kosten_pct: float) -> float:
+    """Rendement over één jaar dat in 1 op de 20 jaren niet wordt gehaald (5e percentiel)."""
+    eind = eindwaarden(
+        gewichten,
+        aannames,
+        horizon_jaren=1,
+        inleg=1.0,
+        storting_per_maand=0.0,
+        kosten_pct=kosten_pct,
+    )
+    return float(np.percentile(eind, 5)) - 1
+
+
+def benodigde_storting(
+    gewichten: dict[str, float],
+    aannames: Aannames,
+    *,
+    horizon_jaren: int,
+    inleg: float,
+    kosten_pct: float,
+    belasting_pct: float,
+    doelvermogen: float,
+    in_koopkracht: bool,
+    kansen: tuple[float, ...] = (0.5, 0.75),
+) -> dict[float, float]:
+    """Maandelijkse storting waarmee het doel met de gegeven kans wordt gehaald.
+
+    Per pad is het eindvermogen A·inleg + B·storting. Het pad haalt het doel vanaf storting
+    (doel − A·inleg) / B; de benodigde storting voor kans p is het p-de kwantiel daarvan.
+    Een uitkomst van 0 betekent dat de inleg alleen al volstaat.
+    """
+    basis = {
+        "horizon_jaren": horizon_jaren,
+        "kosten_pct": kosten_pct,
+        "belasting_pct": belasting_pct,
+    }
+    a = eindwaarden(gewichten, aannames, inleg=1.0, storting_per_maand=0.0, **basis)
+    b = eindwaarden(gewichten, aannames, inleg=0.0, storting_per_maand=1.0, **basis)
+    doel = doelvermogen * ((1 + aannames.inflatie) ** horizon_jaren if in_koopkracht else 1)
+    nodig = (doel - a * inleg) / b
+    return {p: max(0.0, float(np.quantile(nodig, p))) for p in kansen}

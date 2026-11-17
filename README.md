@@ -123,15 +123,25 @@ Tests: `uv run pytest` (SQLite in het geheugen; zet `TEST_DATABASE_URL` om tegen
 
 ## Adviesrapport
 
-- Bij elke vastgelegde portefeuilleversie kan een adviesrapport (PDF) worden opgesteld: situatie
-  en wensen, risicoprofiel, portefeuille, onderbouwing, kosten, resultaten uit het verleden met
-  stresstest, scenario's met de gebruikte aannames, en risico's.
-- Het rapport wordt opgebouwd uit de momentopname van de versie en verandert dus niet als koersen,
-  aannames of modelallocaties later wijzigen.
-- Elk rapport wordt versleuteld bewaard met datum, opsteller en SHA-256-vingerafdruk. Opstellen en
-  downloaden worden vastgelegd in het logboek.
-- Zolang er voorbeeldaannames of ongecontroleerde fondskosten in zitten, staat op de eerste pagina
-  dat het een concept is.
+Bij elke vastgelegde portefeuilleversie kan een adviesrapport (PDF) worden opgesteld, geschreven
+voor de klant:
+
+- **In het kort** op de eerste pagina: het advies, de haalbaarheid van het doel, de bandbreedte van
+  de uitkomsten, het verlies in een slecht jaar en de kosten in euro's.
+- **Hoofdstukken:** situatie en wensen (scores in woorden), het advies met per fonds waarin het
+  belegt, waarom het past (inclusief nadelen), kosten, uw doel met wat helpt om het te halen,
+  wat er mis kan gaan (toegesneden op de portefeuille), resultaten uit het verleden en volgende
+  stappen.
+- **Bijlagen:** begrippenlijst en technische toelichting (volatiliteit, Sharpe-ratio, aannames,
+  ISIN's, verantwoording).
+- **Wat helpt:** bij vastleggen worden vergelijkingen berekend en bewaard: de maandelijkse storting
+  voor 50% en 75% kans op het doel, vijf jaar langer beleggen, het profiel uit de vragenlijst en
+  één profiel defensiever.
+- **Concept of definitief:** zolang er voorbeeldaannames, ongecontroleerde fondskosten of
+  ongetoetste duurzaamheidswensen zijn, is het rapport een concept met watermerk. De redenen staan
+  in het klantscherm, niet in de PDF.
+- Elk rapport wordt versleuteld bewaard met datum, opsteller, status en SHA-256-vingerafdruk, en is
+  een momentopname van de versie.
 - Het lettertype DejaVu Sans staat in `backend/app/lettertypen` (vrije licentie, zie
   `LICENTIE-DejaVu.txt`).
 

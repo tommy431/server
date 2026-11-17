@@ -34,7 +34,12 @@ def tekst_van(pdf: bytes, tmp_path) -> str:
 
 
 def test_rapport_opstellen_bewaren_en_downloaden(
-    ingelogd, klant_id, versie, db, adviseur, tmp_path  # noqa: F811
+    ingelogd,
+    klant_id,  # noqa: F811
+    versie,
+    db,
+    adviseur,
+    tmp_path,
 ):
     r = ingelogd.post(f"/klanten/{klant_id}/portefeuille/versies/{versie}/rapporten")
     assert r.status_code == 201
@@ -59,24 +64,42 @@ def test_rapport_opstellen_bewaren_en_downloaden(
 
     inhoud = tekst_van(pdf.content, tmp_path)
     for verwacht in [
-        "Adviesrapport beleggingsportefeuille",
+        "Uw beleggingsadvies",
         "Jan Jansen",
+        "In het kort",
+        "Ons advies:",
+        "Uw doel:",
+        "In een slecht jaar",
         "1. Uw situatie en wensen",
-        "2. De voorgestelde portefeuille",
-        "iShares Core MSCI World UCITS ETF (Acc)",
-        "3. Waarom deze portefeuille bij u past",
+        "2. Ons advies",
+        "Aandelen van bedrijven wereldwijd",
+        "3. Waarom dit advies bij u past",
+        "De nadelen van dit advies",
         "4. Kosten",
-        "Overige kosten",
-        "5. Resultaten uit het verleden",
-        "In het verleden behaalde resultaten bieden geen garantie voor de toekomst.",
-        "6. Mogelijke uitkomsten in de toekomst",
-        "Verwacht scenario",
+        "Kosten advies, beheer en bewaring",
+        "5. Uw doel: wat kunt u verwachten?",
+        "Middelste scenario",
         "geen voorspelling",
-        "7. Risico's",
-        "Concept: de scenario's in dit rapport rekenen met voorbeeldaannames",
+        "6. Wat kan er misgaan?",
+        "Een zware crisis.",
+        "7. Resultaten uit het verleden",
+        "In het verleden behaalde resultaten bieden geen garantie voor de toekomst.",
+        "8. Volgende stappen",
+        "Bijlage A: begrippen",
+        "Bijlage B: technische toelichting",
+        "CONCEPT",
     ]:
         assert verwacht in inhoud, verwacht
     assert "+5,0%" in inhoud  # alle koersen groeien 5% per jaar
+    # Interne meldingen horen niet in het klantrapport.
+    for intern in [
+        "niet gecontroleerd tegen de fondsdocumentatie",
+        "Niet aan de klant verstrekken",
+        "instrument(en)",
+    ]:
+        assert intern not in inhoud, intern
+    assert meta["status"] == "concept"
+    assert any("voorbeeldaannames" in r for r in meta["concept_redenen"])
 
     # De PDF staat versleuteld in de database.
     ruw = db.execute(text("select pdf from rapport")).scalar_one()
@@ -113,7 +136,7 @@ def test_rapport_is_een_momentopname(ingelogd, klant_id, versie, db, tmp_path): 
         ingelogd.get(f"/klanten/{klant_id}/rapporten/{tweede['id']}/pdf").content, tmp_path
     )
     assert "+5,0%" in b and "+20,0%" not in b
-    assert "40% – 60%" in b
+    assert "40% tot 60%" in b
     assert a == b
 
 
@@ -172,3 +195,39 @@ def test_alleen_eigen_klant(client, ingelogd, klant_id, versie, db):  # noqa: F8
         ).status_code
         == 401
     )
+
+
+def test_vastgelegde_versie_bevat_vergelijkingen_en_slecht_jaar(ingelogd, klant_id, versie):  # noqa: F811
+    v = ingelogd.get(pad(klant_id, "versies")).json()[0]["scenario"]
+    assert -0.3 < v["slecht_jaar"] < 0 and v["slecht_jaar_eur"] == round(-v["slecht_jaar"] * 100000)
+    var = v["varianten"]
+    assert var["maatstaf"] == "nominaal" and var["langer"]["horizon_jaren"] == 20
+    # Profiel uit de fixture: neutraal afgeleid en gekozen; vergelijking met één stap defensiever.
+    assert [p["code"] for p in var["profielen"]] == ["defensief"]
+    st = var["storting_voor_kans"]
+    assert set(st) == {"0.5", "0.75"} and st["0.5"] <= st["0.75"] and st["0.5"] % 10 == 0
+    # Het live scenario rekent geen vergelijkingen door.
+    posities = ingelogd.get(pad(klant_id, "versies")).json()[0]["posities"]
+    live = ingelogd.post(pad(klant_id, "scenario"), json={"posities": posities}).json()
+    assert live["varianten"] is None and live["slecht_jaar"] is not None
+
+
+def test_definitief_rapport_zonder_watermerk(ingelogd, klant_id, db, tmp_path):  # noqa: F811
+    from app.models import Instrument
+    from tests.test_aannames_scenario_api import aannames_in
+
+    for i in db.scalars(select(Instrument)):
+        i.kosten_geverifieerd = True
+    db.commit()
+    assert ingelogd.post("/aannames", json=aannames_in(bron="Testbron")).status_code == 201
+    v = ingelogd.post(pad(klant_id, "voorstel"), json={}).json()
+    vul_koersen(db, per_jaar=0.05)
+    versie = ingelogd.post(pad(klant_id, "versies"), json={"posities": v["posities"]}).json()[
+        "versie"
+    ]
+    meta = ingelogd.post(f"/klanten/{klant_id}/portefeuille/versies/{versie}/rapporten").json()
+    assert (meta["status"], meta["concept_redenen"]) == ("definitief", [])
+    inhoud = tekst_van(
+        ingelogd.get(f"/klanten/{klant_id}/rapporten/{meta['id']}/pdf").content, tmp_path
+    )
+    assert "CONCEPT" not in inhoud and "Uw beleggingsadvies" in inhoud

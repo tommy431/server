@@ -291,4 +291,7 @@ class Rapport(Basis):
     sha256: Mapped[str] = mapped_column(String(64))
     grootte: Mapped[int] = mapped_column(Integer)
     pdf: Mapped[bytes | None] = mapped_column(VersleuteldeBytes)
+    # "concept" zolang er punten openstaan die compliance moet oplossen; anders "definitief".
+    status: Mapped[str] = mapped_column(String(20), default="concept", server_default="concept")
+    concept_redenen: Mapped[list | None] = mapped_column(JSON)
     verwijderd_op: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

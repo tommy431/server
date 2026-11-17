@@ -268,6 +268,7 @@ export default function KlantDetail() {
                 <th>Opgesteld</th>
                 <th>Portefeuilleversie</th>
                 <th>Door</th>
+                <th>Status</th>
                 <th />
               </tr>
             </thead>
@@ -280,6 +281,20 @@ export default function KlantDetail() {
                     {r.volgnummer > 1 && <span className="zacht"> (rapport {r.volgnummer})</span>}
                   </td>
                   <td>{r.opgesteld_door}</td>
+                  <td>
+                    {r.status === "definitief" ? (
+                      "Definitief"
+                    ) : (
+                      <>
+                        <span className="oranje">Concept: niet aan de klant geven</span>
+                        <ul className="zacht klein-tekst redenen">
+                          {r.concept_redenen.map((reden) => (
+                            <li key={reden}>{reden}</li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+                  </td>
                   <td>
                     {r.beschikbaar ? (
                       <button
@@ -303,7 +318,10 @@ export default function KlantDetail() {
               ))}
             </tbody>
           </table>
-          <p className="zacht klein-tekst">Elk rapport wordt bewaard zoals het is opgesteld.</p>
+          <p className="zacht klein-tekst">
+            Elk rapport wordt bewaard zoals het is opgesteld. Een conceptrapport heeft een watermerk; los de genoemde
+            punten op, leg een nieuwe portefeuilleversie vast en stel het rapport opnieuw op.
+          </p>
         </section>
       )}
 

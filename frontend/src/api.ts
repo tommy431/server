@@ -344,6 +344,8 @@ export type Rapport = {
   sha256: string;
   grootte: number;
   beschikbaar: boolean;
+  status: "concept" | "definitief";
+  concept_redenen: string[];
 };
 
 /** Haalt een PDF op met het inlogtoken en biedt hem aan als download. */
