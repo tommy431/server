@@ -3,14 +3,14 @@ from datetime import UTC, datetime, timedelta
 
 import pyotp
 import segno
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 from app.api.afhankelijkheden import Db, IngelogdTijdelijk
 from app.config import instellingen
 from app.logboek import leg_vast
-from app.models import Adviseur, Logboek
+from app.models import Adviseur, Inlogpoging
 from app.security import (
     MIN_WACHTWOORDLENGTE,
     controleer_totp,
@@ -74,29 +74,56 @@ def _mislukt(db: Db, email: str, melding: str) -> HTTPException:
     return HTTPException(status.HTTP_401_UNAUTHORIZED, melding)
 
 
+def _ip(request: Request) -> str:
+    # Achter een proxy vult uvicorn dit met --proxy-headers alleen voor vertrouwde proxy's in.
+    return (request.client.host if request.client else "onbekend")[:64]
+
+
+def _aantal_mislukt(db: Db, sinds: datetime, **filters) -> int:
+    """Mislukte pogingen sinds `sinds` en sinds de laatste geslaagde poging met dezelfde filters."""
+    voorwaarden = [getattr(Inlogpoging, k) == v for k, v in filters.items()]
+    laatste_gelukt = db.scalar(
+        select(func.max(Inlogpoging.tijdstip)).where(*voorwaarden, Inlogpoging.gelukt)
+    )
+    if laatste_gelukt is not None:
+        sinds = max(sinds, _als_utc(laatste_gelukt))
+    return db.scalar(
+        select(func.count())
+        .select_from(Inlogpoging)
+        .where(*voorwaarden, ~Inlogpoging.gelukt, Inlogpoging.tijdstip > sinds)
+    )
+
+
+def _als_utc(t: datetime) -> datetime:
+    return t if t.tzinfo else t.replace(tzinfo=UTC)
+
+
+def _poging(db: Db, email: str, ip: str, gelukt: bool) -> None:
+    nu = datetime.now(UTC)
+    db.add(Inlogpoging(tijdstip=nu, email=email, ip=ip, gelukt=gelukt))
+    # Oude pogingen opruimen; voor de controle is alleen het laatste kwartier nodig.
+    db.execute(delete(Inlogpoging).where(Inlogpoging.tijdstip < nu - timedelta(days=1)))
+
+
+def _mislukt(db: Db, email: str, ip: str, melding: str) -> HTTPException:
+    _poging(db, email, ip, False)
+    leg_vast(db, "login_mislukt", entiteit="adviseur", entiteit_id=email, details={"ip": ip})
+    db.commit()
+    return HTTPException(status.HTTP_401_UNAUTHORIZED, melding)
+
+
 @router.post("/login", response_model=TokenAntwoord)
-def login(verzoek: LoginVerzoek, db: Db) -> TokenAntwoord:
+def login(verzoek: LoginVerzoek, request: Request, db: Db) -> TokenAntwoord:
     cfg = instellingen()
     email = verzoek.email.lower()
+    ip = _ip(request)
     sinds = datetime.now(UTC) - timedelta(minutes=cfg.login_blokkade_minuten)
-    # Na een geslaagde login begint de telling opnieuw.
-    laatste_login = db.scalar(
-        select(func.max(Logboek.tijdstip)).where(
-            Logboek.actie == "login", Logboek.entiteit_id == email, Logboek.tijdstip >= sinds
-        )
-    )
-    if laatste_login is not None:
-        sinds = laatste_login
-    mislukt = db.scalar(
-        select(func.count())
-        .select_from(Logboek)
-        .where(
-            Logboek.actie == "login_mislukt",
-            Logboek.entiteit_id == email,
-            Logboek.tijdstip >= sinds,
-        )
-    )
-    if mislukt >= cfg.max_mislukte_logins:
+    if (
+        _aantal_mislukt(db, sinds, ip=ip, email=email) >= cfg.max_mislukte_logins
+        or _aantal_mislukt(db, sinds, ip=ip) >= cfg.max_mislukte_logins_per_ip
+        or _aantal_mislukt(db, sinds, email=email) >= cfg.max_mislukte_logins_per_account
+    ):
+        # Zelfde melding voor alle drie, zodat niet te zien is welke grens is bereikt.
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
             f"Te veel mislukte pogingen; probeer het over {cfg.login_blokkade_minuten} minuten opnieuw",
@@ -107,7 +134,7 @@ def login(verzoek: LoginVerzoek, db: Db) -> TokenAntwoord:
         verzoek.wachtwoord, adviseur.wachtwoord_hash if adviseur else _DUMMY_HASH
     )
     if adviseur is None or not adviseur.actief or not juist:
-        raise _mislukt(db, email, "Onjuist e-mailadres of wachtwoord")
+        raise _mislukt(db, email, ip, "Onjuist e-mailadres of wachtwoord")
 
     if adviseur.tweestaps_actief:
         if not verzoek.code:
@@ -115,10 +142,18 @@ def login(verzoek: LoginVerzoek, db: Db) -> TokenAntwoord:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, CODE_NODIG)
         stap = controleer_totp(adviseur.totp_geheim, verzoek.code, adviseur.totp_laatste_stap)
         if stap is None:
-            raise _mislukt(db, email, "Onjuiste code")
+            raise _mislukt(db, email, ip, "Onjuiste code")
         adviseur.totp_laatste_stap = stap
 
-    leg_vast(db, "login", adviseur_id=adviseur.id, entiteit="adviseur", entiteit_id=email)
+    _poging(db, email, ip, True)
+    leg_vast(
+        db,
+        "login",
+        adviseur_id=adviseur.id,
+        entiteit="adviseur",
+        entiteit_id=email,
+        details={"ip": ip},
+    )
     db.commit()
     return TokenAntwoord(access_token=maak_token(adviseur.id, adviseur.sessie_versie))
 

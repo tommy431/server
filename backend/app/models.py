@@ -364,3 +364,15 @@ class Ondernemingsgegevens(Basis):
         DateTime(timezone=True), server_default=func.now()
     )
     vastgelegd_door: Mapped[int | None] = mapped_column(ForeignKey("adviseur.id"))
+
+
+class Inlogpoging(Basis):
+    """Inlogpogingen voor de blokkade. Wordt na een dag opgeschoond; het logboek blijft."""
+
+    __tablename__ = "inlogpoging"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tijdstip: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    email: Mapped[str] = mapped_column(String(254), index=True)
+    ip: Mapped[str] = mapped_column(String(64), index=True)
+    gelukt: Mapped[bool] = mapped_column(Boolean)

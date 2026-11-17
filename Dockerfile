@@ -25,5 +25,8 @@ RUN useradd --system --uid 10001 portefeuille && chown -R portefeuille /app
 USER portefeuille
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/gezondheid')"
+# Alleen het IP-adres van de eigen proxy vertrouwen voor X-Forwarded-For. Met '*' kan iedereen een
+# vals IP-adres meesturen en zo de inlog- en verzoeklimieten omzeilen.
+ENV FORWARDED_ALLOW_IPS=127.0.0.1
 # Eerst migreren, dan starten. Achter een proxy met HTTPS.
-CMD ["sh", "-c", "uv run --no-sync alembic upgrade head && uv run --no-sync uvicorn app.productie:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"]
+CMD ["sh", "-c", "uv run --no-sync alembic upgrade head && uv run --no-sync uvicorn app.productie:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips \"$FORWARDED_ALLOW_IPS\""]

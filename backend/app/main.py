@@ -12,8 +12,10 @@ from app.api import (
     rapporten,
     wijzigingen,
 )
+from app.verzoeklimiet import Verzoeklimiet
 
 app = FastAPI(title="Portefeuille op maat")
+app.add_middleware(Verzoeklimiet)
 app.include_router(auth.router)
 app.include_router(instrumenten.router)
 app.include_router(klanten.router)

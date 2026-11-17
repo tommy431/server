@@ -4,6 +4,8 @@ os.environ["JWT_GEHEIM"] = "test-geheim-alleen-voor-de-testsuite-0123456789"
 # Standaard zonder vier-ogenprincipe; tests in test_rollen.py zetten het aan.
 os.environ["VIER_OGEN"] = "false"
 os.environ["TWEESTAPS_VERPLICHT_BEHEERDER"] = "false"
+# De algemene verzoeklimiet staat uit; test_inloglimieten.py zet hem aan.
+os.environ["LIMIET_VERZOEKEN_PER_MINUUT"] = "0"
 os.environ["VERSLEUTELSLEUTEL"] = "dGVzdHNsZXV0ZWwtdGVzdHNsZXV0ZWwtdGVzdHNsZXU="
 
 import pytest

@@ -20,7 +20,16 @@ class Instellingen(BaseSettings):
     # Beheerders moeten tweestapsverificatie gebruiken voordat ze beheertaken kunnen doen.
     tweestaps_verplicht_beheerder: bool = True
     token_geldigheid_minuten: int = 480
+    # Blokkade na mislukte inlogpogingen binnen `login_blokkade_minuten`:
+    # per combinatie van IP-adres en account (een aanvaller elders sluit de gebruiker niet buiten),
     max_mislukte_logins: int = 5
+    # per IP-adres over alle accounts (tegen het proberen van veel accounts),
+    max_mislukte_logins_per_ip: int = 20
+    # en per account over alle IP-adressen (alleen bij een grootschalige aanval).
+    max_mislukte_logins_per_account: int = 50
+    # Algemene limiet op het aantal verzoeken per IP-adres per minuut; 0 schakelt hem uit.
+    # Ruim gekozen, omdat een kantoor vaak met één IP-adres naar buiten gaat.
+    limiet_verzoeken_per_minuut: int = 1200
 
     @field_validator("jwt_geheim")
     @classmethod

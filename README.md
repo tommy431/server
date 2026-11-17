@@ -63,6 +63,20 @@ Tests:
   database bij het starten en draait niet als root.
 - Verplicht: `DATABASE_URL`, `JWT_GEHEIM` (minstens 32 tekens) en `VERSLEUTELSLEUTEL`; de server
   weigert te starten met een zwak of ongeldig geheim.
+- Zet `FORWARDED_ALLOW_IPS` op het IP-adres van de proxy (standaard alleen `127.0.0.1`). Alleen
+  dan gebruikt de server het echte IP-adres van de bezoeker voor de inlog- en verzoeklimieten,
+  zonder dat iemand een vals adres kan meesturen.
+
+## Beveiliging tegen misbruik
+
+- Na 5 mislukte inlogpogingen in 15 minuten wordt de combinatie van IP-adres en account
+  geblokkeerd. Een aanvaller elders kan de gebruiker dus niet buitensluiten.
+- Een IP-adres met 20 mislukte pogingen, over alle accounts samen, wordt geblokkeerd.
+- Alleen bij een grootschalige aanval (50 mislukte pogingen op één account vanaf veel adressen)
+  gaat dat account tijdelijk dicht.
+- Algemene limiet van 1200 verzoeken per minuut per IP-adres (`LIMIET_VERZOEKEN_PER_MINUUT`).
+  Deze teller staat in het geheugen van elk serverproces; bij meerdere processen geldt hij per
+  proces.
 - Maak dagelijks een back-up van de database, en bewaar de `VERSLEUTELSLEUTEL` apart en veilig:
   zonder die sleutel zijn klantgegevens en rapporten in de back-up onleesbaar.
 

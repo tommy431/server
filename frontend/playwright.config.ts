@@ -12,6 +12,8 @@ const omgeving = {
   // Tweestapsverificatie voor beheerders staat uit, zodat de beheertests zonder codes kunnen.
   // De tweestapsflow zelf wordt getest in accounts.spec.ts.
   TWEESTAPS_VERPLICHT_BEHEERDER: "false",
+  // Alle tests komen van hetzelfde adres; de limiet zelf wordt in de backendtests getest.
+  LIMIET_VERZOEKEN_PER_MINUUT: "0",
 };
 
 export default defineConfig({
