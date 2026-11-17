@@ -6,9 +6,15 @@ Model:
 - Maandrendementen zijn lognormaal verdeeld, gezamenlijk normaal in logaritmen. De parameters
   zijn zo gekozen dat het rekenkundig jaarrendement en de jaarvolatiliteit per categorie
   overeenkomen met de aannames.
-- De portefeuille wordt elke maand teruggebracht naar de gewichten per categorie.
-- Kosten (lopende fondskosten plus eventuele overige kosten) gaan er elke maand naar rato af.
-- De inleg wordt aan het begin belegd, stortingen aan het eind van elke maand.
+- Extreme crises komen in werkelijkheid vaker voor dan dit model aanneemt. Dikkere staarten per
+  maand helpen daar niet tegen: over jaren middelen ze uit. Staartrisico wordt daarom apart
+  getoond met historische en hypothetische stresstests.
+- De portefeuille wordt eens per jaar teruggebracht naar de gewichten per categorie; daartussen
+  lopen de gewichten met de koersen mee, net als in de historische analyse.
+- Kosten (lopende fondskosten plus eventuele overige kosten) en een eventuele vermogensheffing
+  als percentage van het vermogen gaan er elke maand naar rato af.
+- De inleg wordt aan het begin belegd, stortingen aan het eind van elke maand volgens de
+  gewichten.
 - Bedragen in koopkracht van vandaag zijn teruggerekend met een vaste inflatie.
 """
 
@@ -102,6 +108,7 @@ class Scenario:
     storting_per_maand: float
     doelvermogen: float | None
     kosten_pct: float  # totaal per jaar, in procenten
+    belasting_pct: float  # vermogensheffing per jaar als percentage van het vermogen
     verwacht_rendement: float  # vóór kosten
     verwachte_volatiliteit: float
     jaren: list[Jaarpunt]
@@ -110,6 +117,7 @@ class Scenario:
     kans_minder_dan_ingelegd: float
     mediaan_zonder_kosten: float
     kosten_effect_mediaan: float  # mediaan eindvermogen zonder kosten min met kosten
+    belasting_effect_mediaan: float  # mediaan eindvermogen zonder heffing min met heffing
     inflatie_effect_mediaan: float  # mediaan nominaal min mediaan in koopkracht van vandaag
 
     def als_dict(self) -> dict:
@@ -124,6 +132,7 @@ def simuleer(
     inleg: float,
     storting_per_maand: float,
     kosten_pct: float,
+    belasting_pct: float = 0.0,
     doelvermogen: float | None = None,
     paden: int = STANDAARD_PADEN,
     zaad: int = STANDAARD_ZAAD,
@@ -133,6 +142,8 @@ def simuleer(
         raise ValueError(f"Het aantal paden moet tussen {MIN_PADEN} en {MAX_PADEN} liggen")
     if horizon_jaren < 1:
         raise ValueError("De horizon moet minimaal 1 jaar zijn")
+    if not 0 <= kosten_pct < 100 or not 0 <= belasting_pct < 100:
+        raise ValueError("Kosten en heffing moeten tussen 0% en 100% liggen")
     if abs(sum(gewichten.values()) - 1) > 1e-9:
         raise ValueError("De gewichten tellen niet op tot 100%")
     onbekend = set(gewichten) - set(aannames.categorieen)
@@ -159,17 +170,28 @@ def simuleer(
     maanden = horizon_jaren * 12
     rng = np.random.default_rng(zaad)
     kostenfactor = (1 - kosten_pct / 100) ** (1 / 12)
+    heffingfactor = (1 - belasting_pct / 100) ** (1 / 12)
 
-    vermogen = np.full(paden, float(inleg))
-    zonder_kosten = vermogen.copy()
-    jaar_nominaal = [vermogen.copy()]
+    # Drie varianten met dezelfde toevalsgetallen, zodat het effect van kosten en heffing zuiver
+    # te meten is: alles, zonder kosten, zonder heffing. Bezit per pad en per categorie.
+    factoren = {
+        "alles": kostenfactor * heffingfactor,
+        "zonder_kosten": heffingfactor,
+        "zonder_heffing": kostenfactor,
+    }
+    bezit = {k: np.outer(np.full(paden, float(inleg)), w) for k in factoren}
+    jaar_nominaal = [bezit["alles"].sum(axis=1)]
     for maand in range(1, maanden + 1):
         z = rng.standard_normal((paden, len(cats)))
-        groei = np.exp(mu / 12 + z @ factor.T) @ w  # bruto groeifactor van de mix
-        vermogen = vermogen * groei * kostenfactor + storting_per_maand
-        zonder_kosten = zonder_kosten * groei + storting_per_maand
+        groei = np.exp(mu / 12 + z @ factor.T)  # per categorie
+        for k, f in factoren.items():
+            bezit[k] = bezit[k] * groei * f + storting_per_maand * w
+            if maand % 12 == 0:  # jaarlijks herbalanceren
+                bezit[k] = np.outer(bezit[k].sum(axis=1), w)
         if maand % 12 == 0:
-            jaar_nominaal.append(vermogen.copy())
+            jaar_nominaal.append(bezit["alles"].sum(axis=1))
+    zonder_kosten = bezit["zonder_kosten"].sum(axis=1)
+    zonder_heffing = bezit["zonder_heffing"].sum(axis=1)
 
     maandinflatie = (1 + aannames.inflatie) ** (1 / 12)
     jaren = []
@@ -203,6 +225,7 @@ def simuleer(
         storting_per_maand=float(storting_per_maand),
         doelvermogen=doelvermogen,
         kosten_pct=kosten_pct,
+        belasting_pct=belasting_pct,
         verwacht_rendement=rendement_mix,
         verwachte_volatiliteit=volatiliteit_mix,
         jaren=jaren,
@@ -211,5 +234,6 @@ def simuleer(
         kans_minder_dan_ingelegd=float(np.mean(eind < ingelegd)),
         mediaan_zonder_kosten=mediaan_zonder,
         kosten_effect_mediaan=mediaan_zonder - mediaan,
+        belasting_effect_mediaan=float(np.median(zonder_heffing)) - mediaan,
         inflatie_effect_mediaan=mediaan - float(np.median(eind_reeel)),
     )

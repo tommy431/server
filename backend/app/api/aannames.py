@@ -8,6 +8,7 @@ from app.api.afhankelijkheden import Db, Ingelogd
 from app.logboek import leg_vast
 from app.models import CATEGORIEEN, Aannameset
 from app.scenario import Aannames, controleer
+from app.standaarden import STANDAARD_STRESS
 
 router = APIRouter(tags=["aannames"])
 
@@ -23,6 +24,8 @@ class AannamesIn(BaseModel):
     categorieen: dict[str, CategorieAanname]
     correlaties: dict[str, dict[str, float]]
     inflatie: float
+    # Directe waardeverandering per categorie in een hypothetische zware crisis.
+    stress: dict[str, float] = Field(default_factory=lambda: dict(STANDAARD_STRESS))
 
 
 class AannamesUit(AannamesIn):
@@ -58,6 +61,7 @@ def _uit(rij: Aannameset) -> AannamesUit:
         categorieen=rij.categorieen,
         correlaties=rij.correlaties,
         inflatie=rij.inflatie,
+        stress=rij.stress or STANDAARD_STRESS,
     )
 
 
@@ -83,8 +87,20 @@ def leg_vast_aannames(invoer: AannamesIn, db: Db, adviseur: Ingelogd) -> Aanname
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT, ["De peildatum mag niet in de toekomst liggen"]
         )
+    if set(invoer.stress) != set(CATEGORIEEN):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            [f"Geef een crisisschok voor precies deze categorieën: {', '.join(CATEGORIEEN)}"],
+        )
+    buiten = [c for c, w in invoer.stress.items() if not -0.95 <= w <= 0.50]
+    if buiten:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            [f"Crisisschok voor {c} valt buiten −95% tot +50%" for c in buiten],
+        )
     rij = Aannameset(
         vastgelegd_door=adviseur.id,
+        stress={c: invoer.stress[c] for c in CATEGORIEEN},
         bron=invoer.bron.strip(),
         peildatum=invoer.peildatum,
         categorieen={c: invoer.categorieen[c].model_dump() for c in CATEGORIEEN},

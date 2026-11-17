@@ -462,3 +462,25 @@ def test_verlengen_met_vervanger_is_gemarkeerd_en_staat_standaard_uit(ingelogd, 
     assert any("gesimuleerd, geen werkelijk behaald resultaat" in w for w in met["waarschuwingen"])
     # Fondsen met tien jaar eigen historie krijgen geen vervanger.
     assert [h["isin"] for h in met["instrumenten"] if h["vervanger"]] == [KLEIN]
+
+
+def test_historische_stressperioden_in_analyse(ingelogd, klant_id, db):
+    v = ingelogd.post(pad(klant_id, "voorstel"), json={}).json()
+    vandaag = date.today()
+    # Koersen vanaf 2010: de kredietcrisis van 2008 valt erbuiten, de rest niet.
+    vul_koersen(db, per_jaar=0.05, begin=date(2010, 1, 1))
+    a = ingelogd.post(pad(klant_id, "analyse"), json={"posities": v["posities"]}).json()["analyse"]
+    stress = {s["code"]: s for s in a["stressperioden"]}
+    assert list(stress) == ["2008", "2011", "2020", "2022"]
+    assert (
+        not stress["2008"]["beschikbaar"]
+        and "bruikbare koersen vanaf 2010-01-01" in stress["2008"]["reden"]
+    )
+    corona = stress["2020"]
+    assert corona["beschikbaar"] and (corona["van"], corona["tot"]) == ("2020-02-19", "2020-03-23")
+    # Alles groeit 5% per jaar, dus ook in deze 33 dagen: 1,05^(33/365,25) − 1.
+    assert corona["rendement"] == pytest.approx(1.05 ** (33 / 365.25) - 1, abs=1e-6)
+    assert corona["max_daling"] == 0.0 and corona["benchmark_rendement"] == pytest.approx(
+        corona["rendement"], abs=1e-6
+    )
+    assert vandaag > date(2022, 12, 30)

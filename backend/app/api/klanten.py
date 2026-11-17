@@ -34,6 +34,7 @@ class ProfielIn(BaseModel):
     inleg_eur: int = Field(ge=0, le=1_000_000_000)
     storting_per_maand_eur: int = Field(ge=0, le=10_000_000)
     doelvermogen_eur: int | None = Field(default=None, gt=0, le=2_000_000_000)
+    doel_in_koopkracht: bool = False
     antwoorden: dict[str, int]
     duurzaamheid: Literal["geen", "enigszins", "sterk"]
     uitsluitingen: list[Literal[UITSLUITINGEN]] = []
@@ -52,6 +53,7 @@ class ProfielUit(BaseModel):
     inleg_eur: int
     storting_per_maand_eur: int
     doelvermogen_eur: int | None
+    doel_in_koopkracht: bool
     vragenlijst_versie: int
     antwoorden: dict[str, int]
     score_bereidheid: int
@@ -109,6 +111,7 @@ def _profiel_uit(profiel: Klantprofiel, codes: dict[int, str]) -> ProfielUit:
         inleg_eur=profiel.inleg_eur,
         storting_per_maand_eur=profiel.storting_per_maand_eur,
         doelvermogen_eur=profiel.doelvermogen_eur,
+        doel_in_koopkracht=profiel.doel_in_koopkracht,
         vragenlijst_versie=profiel.vragenlijst_versie,
         antwoorden=profiel.antwoorden,
         score_bereidheid=profiel.score_bereidheid,
@@ -416,6 +419,7 @@ def leg_profiel_vast(klant_id: int, invoer: ProfielIn, db: Db, adviseur: Ingelog
         inleg_eur=invoer.inleg_eur,
         storting_per_maand_eur=invoer.storting_per_maand_eur,
         doelvermogen_eur=invoer.doelvermogen_eur,
+        doel_in_koopkracht=invoer.doel_in_koopkracht,
         vragenlijst_versie=VRAGENLIJST_VERSIE,
         antwoorden=invoer.antwoorden,
         score_bereidheid=uitkomst.score_bereidheid,

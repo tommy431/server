@@ -168,6 +168,8 @@ class Klantprofiel(Basis):
     inleg_eur: Mapped[int] = mapped_column(Integer)
     storting_per_maand_eur: Mapped[int] = mapped_column(Integer)
     doelvermogen_eur: Mapped[int | None] = mapped_column(Integer)
+    # True: het doelvermogen is uitgedrukt in koopkracht van vandaag; False: in euro's van later.
+    doel_in_koopkracht: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     vragenlijst_versie: Mapped[int] = mapped_column(Integer)
     antwoorden: Mapped[dict] = mapped_column(JSON)
@@ -246,6 +248,8 @@ class Aannameset(Basis):
     categorieen: Mapped[dict] = mapped_column(JSON)
     correlaties: Mapped[dict] = mapped_column(JSON)
     inflatie: Mapped[float] = mapped_column(Float)
+    # Hypothetische zware crisis: directe waardeverandering per categorie, bijv. -0.45.
+    stress: Mapped[dict | None] = mapped_column(JSON)
 
 
 class Rente(Basis):

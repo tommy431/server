@@ -216,3 +216,34 @@ def test_rekentijd_bij_lange_horizon_blijft_beperkt():
     )
     assert time.perf_counter() - begin < 5
     assert len(s.jaren) == 41 and np.isfinite(s.jaren[-1].nominaal).all()
+
+
+def test_jaarlijks_herbalanceren_handmatig_nagerekend():
+    # A groeit 10% per jaar, B 0%, half om half, zonder schommelingen.
+    # Jaar 1: 0,5 × 1,10 + 0,5 × 1 = 1,05. Herbalanceren, jaar 2 weer × 1,05: totaal 1,1025.
+    # (Maandelijks herbalanceren zou (0,5 × 1,1^(1/12) + 0,5)^24 = 1,1002 geven.)
+    a = aannames(r=(0.10, 0.0), v=(0.0, 0.0))
+    s = sim({"aandelen": 0.5, "obligaties": 0.5}, a, horizon_jaren=2, inleg=1000)
+    assert s.jaren[1].nominaal[1] == pytest.approx(1050.0)
+    assert s.jaren[2].nominaal[1] == pytest.approx(1102.5)
+
+
+def test_vermogensheffing_handmatig_nagerekend():
+    # 0% rendement, 1,2% heffing per jaar, 1 jaar: 10.000 × 0,988 = 9.880.
+    a = aannames(r=(0.0, 0.0), v=(0.0, 0.0))
+    s = sim({"aandelen": 1.0}, a, horizon_jaren=1, inleg=10_000, belasting_pct=1.2)
+    assert s.jaren[1].nominaal[1] == pytest.approx(9_880.0)
+    assert s.belasting_effect_mediaan == pytest.approx(120.0)
+    assert s.kosten_effect_mediaan == pytest.approx(0.0)
+    # Kosten en heffing samen: 10.000 × 0,99 × 0,988.
+    s = sim({"aandelen": 1.0}, a, horizon_jaren=1, inleg=10_000, kosten_pct=1.0, belasting_pct=1.2)
+    assert s.jaren[1].nominaal[1] == pytest.approx(10_000 * 0.99 * 0.988)
+    assert s.kosten_effect_mediaan == pytest.approx(10_000 * 0.988 * 0.01)
+    assert s.belasting_effect_mediaan == pytest.approx(10_000 * 0.99 * 0.012)
+
+
+def test_ongeldige_kosten_of_heffing():
+    with pytest.raises(ValueError):
+        sim({"aandelen": 1.0}, aannames(), kosten_pct=-1)
+    with pytest.raises(ValueError):
+        sim({"aandelen": 1.0}, aannames(), belasting_pct=100)

@@ -58,6 +58,15 @@ STANDAARD_CORRELATIES = {
     for a in STANDAARD_AANNAMES
 }
 STANDAARD_INFLATIE = 0.02
+# Voorbeeldwaarden voor een zware crisis, globaal in lijn met de daling van piek tot dal in
+# 2007–2009 gemeten in euro's. Niet afkomstig uit een gepubliceerde bron; vervangen vóór gebruik.
+STANDAARD_STRESS = {
+    "aandelen": -0.50,
+    "obligaties": 0.05,
+    "vastgoed": -0.60,
+    "grondstoffen": -0.50,
+    "liquiditeiten": 0.01,
+}
 STANDAARD_BRON = (
     "Voorbeeldwaarden, niet afkomstig uit een gepubliceerde bron. Vervang ze door aannames uit "
     "een erkende bron voordat ze in een advies worden gebruikt."
@@ -74,5 +83,6 @@ def zaai_aannames(db: Session) -> None:
                 categorieen=STANDAARD_AANNAMES,
                 correlaties=STANDAARD_CORRELATIES,
                 inflatie=STANDAARD_INFLATIE,
+                stress=STANDAARD_STRESS,
             )
         )

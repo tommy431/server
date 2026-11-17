@@ -173,3 +173,59 @@ def test_zonder_inloggen_geen_toegang(client):
         ("post", "/klanten/1/portefeuille/scenario"),
     ]:
         assert client.request(methode, p).status_code == 401
+
+
+def test_crisisschok_en_heffing_in_scenario(ingelogd, klant_id):  # noqa: F811
+    v = ingelogd.post(pad(klant_id, "voorstel"), json={}).json()
+    uit = ingelogd.post(pad(klant_id, "scenario"), json={"posities": v["posities"]}).json()
+    # Neutraal: 50% × −50% + 38% × 5% + 5% × −60% + 2% × −50% + 5% × 1% = −27,05%.
+    assert uit["crisis_rendement"] == pytest.approx(-0.2705)
+    assert uit["crisis_verlies_eur"] == 27050  # op de inleg van 100.000
+    assert uit["aannames"]["stress"]["aandelen"] == -0.5
+
+    met = ingelogd.post(
+        pad(klant_id, "scenario"), json={"posities": v["posities"], "belasting_pct": 1.0}
+    ).json()
+    assert met["belasting_pct"] == 1.0
+    assert met["scenario"]["belasting_effect_mediaan"] > 0
+    assert met["scenario"]["jaren"][-1]["nominaal"][1] < uit["scenario"]["jaren"][-1]["nominaal"][1]
+    assert uit["scenario"]["belasting_effect_mediaan"] == pytest.approx(0.0)
+    assert (
+        ingelogd.post(
+            pad(klant_id, "scenario"), json={"posities": v["posities"], "belasting_pct": 6}
+        ).status_code
+        == 422
+    )
+
+
+def test_crisisschok_instellen_en_valideren(ingelogd):
+    nieuw = aannames_in(
+        stress={
+            "aandelen": -0.4,
+            "obligaties": 0.0,
+            "vastgoed": -0.5,
+            "grondstoffen": -0.3,
+            "liquiditeiten": 0.0,
+        }
+    )
+    assert ingelogd.post("/aannames", json=nieuw).status_code == 201
+    assert ingelogd.get("/aannames").json()["stress"]["aandelen"] == -0.4
+    r = ingelogd.post("/aannames", json=aannames_in(stress={**nieuw["stress"], "aandelen": -1.0}))
+    assert r.status_code == 422 and "buiten −95% tot +50%" in r.json()["detail"][0]
+    r = ingelogd.post("/aannames", json=aannames_in(stress={"aandelen": -0.4}))
+    assert r.status_code == 422 and "crisisschok" in r.json()["detail"][0]
+
+
+def test_grondslag_van_het_doelvermogen_wordt_bewaard_en_doorgegeven(ingelogd, klant_id):  # noqa: F811
+    r = ingelogd.post(
+        f"/klanten/{klant_id}/profielen",
+        json=profiel(antwoorden=antwoorden(2, 2), doel_in_koopkracht=True),
+    )
+    assert r.json()["doel_in_koopkracht"] is True
+    v = ingelogd.post(pad(klant_id, "voorstel"), json={}).json()
+    assert (
+        ingelogd.post(pad(klant_id, "scenario"), json={"posities": v["posities"]}).json()[
+            "doel_in_koopkracht"
+        ]
+        is True
+    )

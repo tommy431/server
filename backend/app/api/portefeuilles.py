@@ -37,6 +37,7 @@ from app.portefeuille import (
     reken_door,
 )
 from app.scenario import simuleer
+from app.standaarden import STANDAARD_STRESS
 
 router = APIRouter(tags=["portefeuille"])
 
@@ -88,6 +89,8 @@ class AnalyseIn(PortefeuilleIn):
 class ScenarioIn(PortefeuilleIn):
     # Kosten bovenop de lopende fondskosten, bijv. advies- of beheerkosten, in procenten per jaar.
     overige_kosten_pct: float = Field(default=0.0, ge=0, le=5)
+    # Benadering van de vermogensheffing (box 3) als percentage van het vermogen per jaar.
+    belasting_pct: float = Field(default=0.0, ge=0, le=5)
 
 
 class VersieIn(ScenarioIn):
@@ -147,8 +150,13 @@ class ScenarioUit(BaseModel):
     reden: str | None  # waarom er geen scenario is
     lopende_kosten_pct: float
     overige_kosten_pct: float
+    belasting_pct: float = 0.0
+    doel_in_koopkracht: bool = False
     gewichten: dict[str, float]  # per categorie, als fractie
     aannames: dict
+    # Hypothetische zware crisis: directe waardeverandering van de mix en het verlies op de inleg.
+    crisis_rendement: float | None = None
+    crisis_verlies_eur: int | None = None
 
 
 class VersieUit(ResultaatUit):
@@ -330,7 +338,7 @@ class _Context:
         )
 
     def scenario(
-        self, db: Db, d: Doorrekening, overige_kosten_pct: float
+        self, db: Db, d: Doorrekening, overige_kosten_pct: float, belasting_pct: float = 0.0
     ) -> tuple[ScenarioUit, int]:
         """Monte Carlo-scenario's voor de verdeling naar categorie, met de huidige aannames."""
         rij = huidige(db)
@@ -341,6 +349,8 @@ class _Context:
             reden=None,
             lopende_kosten_pct=d.kosten_pct,
             overige_kosten_pct=overige_kosten_pct,
+            belasting_pct=belasting_pct,
+            doel_in_koopkracht=p.doel_in_koopkracht,
             gewichten=gewichten,
             aannames={
                 "id": rij.id,
@@ -349,8 +359,12 @@ class _Context:
                 "categorieen": rij.categorieen,
                 "correlaties": rij.correlaties,
                 "inflatie": rij.inflatie,
+                "stress": rij.stress or STANDAARD_STRESS,
             },
         )
+        schokken = rij.stress or STANDAARD_STRESS
+        uit.crisis_rendement = sum(g * schokken.get(c, 0.0) for c, g in gewichten.items())
+        uit.crisis_verlies_eur = round(-uit.crisis_rendement * p.inleg_eur)
         if d.totaal != 10_000:
             uit.reden = "De gewichten tellen niet op tot 100%"
             return uit, rij.id
@@ -361,6 +375,7 @@ class _Context:
             inleg=p.inleg_eur,
             storting_per_maand=p.storting_per_maand_eur,
             kosten_pct=d.kosten_pct + overige_kosten_pct,
+            belasting_pct=belasting_pct,
             doelvermogen=p.doelvermogen_eur,
         ).als_dict()
         return uit, rij.id
@@ -439,7 +454,7 @@ def scenario(klant_id: int, invoer: ScenarioIn, db: Db, adviseur: Ingelogd) -> S
     blokkerend = [b.melding for b in d.fouten if b.code != "uitgesloten"]
     if blokkerend:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, blokkerend)
-    return ctx.scenario(db, d, invoer.overige_kosten_pct)[0]
+    return ctx.scenario(db, d, invoer.overige_kosten_pct, invoer.belasting_pct)[0]
 
 
 def _versie_uit(
@@ -508,7 +523,9 @@ def leg_vast_versie(klant_id: int, invoer: VersieIn, db: Db, adviseur: Ingelogd)
             + [b.melding for b in d.afwijkingen],
         )
 
-    scenario_uit, aannameset_id = ctx.scenario(db, d, invoer.overige_kosten_pct)
+    scenario_uit, aannameset_id = ctx.scenario(
+        db, d, invoer.overige_kosten_pct, invoer.belasting_pct
+    )
     vorige = db.scalar(
         select(func.max(Portefeuille.versie)).where(Portefeuille.klant_id == klant_id)
     )

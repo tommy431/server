@@ -71,6 +71,29 @@ class InstrumentHistorie:
 
 
 @dataclass(frozen=True)
+class Stressperiode:
+    code: str
+    naam: str
+    van: date
+    tot: date
+    beschikbaar: bool
+    reden: str | None = None
+    rendement: float | None = None  # van begin tot eind van de periode
+    max_daling: float | None = None
+    benchmark_rendement: float | None = None
+    gesimuleerd: bool = False
+
+
+# Historische perioden van marktonrust, toegepast op de huidige samenstelling.
+STRESSPERIODEN = (
+    ("2008", "Kredietcrisis (sep 2008 – mrt 2009)", date(2008, 9, 1), date(2009, 3, 9)),
+    ("2011", "Europese schuldencrisis (jul – dec 2011)", date(2011, 7, 1), date(2011, 12, 30)),
+    ("2020", "Coronacrash (19 feb – 23 mrt 2020)", date(2020, 2, 19), date(2020, 3, 23)),
+    ("2022", "Inflatie en rentestijging (2022)", date(2021, 12, 31), date(2022, 12, 30)),
+)
+
+
+@dataclass(frozen=True)
 class Analyse:
     peildatum: date | None
     perioden: list[Periode] = field(default_factory=list)
@@ -79,6 +102,7 @@ class Analyse:
     # Maandwaarden sinds start, beginwaarde 100: (datum, portefeuille, benchmark of None).
     waardeverloop: list[tuple[date, float, float | None]] = field(default_factory=list)
     waarschuwingen: list[str] = field(default_factory=list)
+    stressperioden: list[Stressperiode] = field(default_factory=list)
 
     def als_dict(self) -> dict:
         def zet_om(waarde):
@@ -374,7 +398,49 @@ def analyseer(
     maandwaarden = [(verloop[0][0], 100.0, 100.0 if verloop_bm else None)] + [
         punt for punt in per_maand.values() if punt[0] != verloop[0][0]
     ]
-    return Analyse(peildatum, perioden, kalenderjaren, historie, maandwaarden, waarschuwingen)
+    stress = []
+    for code, naam, van, tot in STRESSPERIODEN:
+        tekort = [h for h in historie if h.bruikbaar_vanaf > van]
+        if tekort or tot > peildatum:
+            eerste = min(tekort, key=lambda h: h.naam) if tekort else None
+            stress.append(
+                Stressperiode(
+                    code,
+                    naam,
+                    van,
+                    tot,
+                    False,
+                    reden=f"{eerste.naam} heeft bruikbare koersen vanaf {eerste.bruikbaar_vanaf}"
+                    if eerste
+                    else "Periode ligt na de laatste koers",
+                )
+            )
+            continue
+        pf = waardeverloop(bruikbaar, gewichten, van, tot)
+        bm = (
+            waardeverloop(bruikbaar, benchmark, van, tot)
+            if bruikbaar_voor(benchmark, van)
+            else None
+        )
+        stress.append(
+            Stressperiode(
+                code,
+                naam,
+                van,
+                tot,
+                True,
+                rendement=pf[-1][1] / pf[0][1] - 1,
+                max_daling=kengetallen(pf, None).max_daling,
+                benchmark_rendement=bm[-1][1] / bm[0][1] - 1 if bm else None,
+                gesimuleerd=any(
+                    h.eigen_koersen_vanaf is not None and h.eigen_koersen_vanaf > van
+                    for h in historie
+                ),
+            )
+        )
+    return Analyse(
+        peildatum, perioden, kalenderjaren, historie, maandwaarden, waarschuwingen, stress
+    )
 
 
 def verleng(reeks: Reeks, vervanger: Reeks) -> Reeks:
