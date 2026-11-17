@@ -87,6 +87,8 @@ def portefeuillekenmerken(gewichten: dict[str, float], a: Aannames) -> tuple[flo
 class Jaarpunt:
     jaar: int
     ingelegd: float
+    # Inleg plus stortingen, elke storting teruggerekend naar koopkracht van vandaag.
+    ingelegd_reeel: float
     nominaal: tuple[float, float, float]  # 5e, 50e, 95e percentiel
     reeel: tuple[float, float, float]
 
@@ -169,14 +171,19 @@ def simuleer(
         if maand % 12 == 0:
             jaar_nominaal.append(vermogen.copy())
 
+    maandinflatie = (1 + aannames.inflatie) ** (1 / 12)
     jaren = []
     for jaar, waarden in enumerate(jaar_nominaal):
         deflator = (1 + aannames.inflatie) ** jaar
+        stortingen_reeel = sum(
+            storting_per_maand / maandinflatie**m for m in range(1, 12 * jaar + 1)
+        )
         p = np.percentile(waarden, PERCENTIELEN)
         jaren.append(
             Jaarpunt(
                 jaar=jaar,
                 ingelegd=float(inleg + storting_per_maand * 12 * jaar),
+                ingelegd_reeel=float(inleg + stortingen_reeel),
                 nominaal=tuple(float(x) for x in p),
                 reeel=tuple(float(x) / deflator for x in p),
             )

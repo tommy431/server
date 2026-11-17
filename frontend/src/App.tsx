@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 
 import { Adviseur, api, registreerUitloggen, token } from "./api";
+import Aannames from "./pages/Aannames";
 import Data from "./pages/Data";
 import KlantDetail from "./pages/KlantDetail";
 import Klanten from "./pages/Klanten";
@@ -43,6 +44,7 @@ export default function App() {
         <nav>
           <NavLink to="/klanten">Klanten</NavLink>
           <NavLink to="/modelallocaties">Modelallocaties</NavLink>
+          <NavLink to="/aannames">Aannames</NavLink>
           <NavLink to="/data">Data</NavLink>
         </nav>
         <span className="wie">
@@ -58,6 +60,7 @@ export default function App() {
           <Route path="/klanten/:id" element={<KlantDetail />} />
           <Route path="/klanten/:id/portefeuille" element={<Portefeuille />} />
           <Route path="/modelallocaties" element={<Modelallocaties />} />
+          <Route path="/aannames" element={<Aannames />} />
           <Route path="/data" element={<Data />} />
           <Route path="*" element={<Navigate to="/klanten" replace />} />
         </Routes>

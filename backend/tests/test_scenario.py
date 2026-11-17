@@ -55,9 +55,20 @@ def test_zonder_volatiliteit_met_kosten_en_stortingen():
     assert s.mediaan_zonder_kosten == pytest.approx(10_000.0)
     assert s.kosten_effect_mediaan == pytest.approx(199.0)
     # Alleen stortingen van 100 per maand, 0% rendement en geen kosten: 2.400 na 2 jaar.
+    a = aannames(r=(0.0, 0.0), v=(0.0, 0.0), inflatie=0.0)
     s = sim({"aandelen": 1.0}, a, horizon_jaren=2, inleg=0, storting_per_maand=100)
     assert [j.ingelegd for j in s.jaren] == [0, 1200, 2400]
-    assert s.jaren[-1].nominaal[1] == pytest.approx(2_400.0)
+    # Zonder inflatie is ingelegd in koopkracht gelijk aan nominaal.
+    assert [j.ingelegd_reeel for j in s.jaren] == pytest.approx([0, 1200, 2400])
+
+
+def test_ingelegd_in_koopkracht_van_vandaag():
+    # 1.000 inleg plus 24 stortingen van 100 bij 6,1678% inflatie per jaar (0,5% per maand):
+    # 1.000 + Σ 100 / 1,005^m voor m = 1..24 = 1.000 + 100 × (1 − 1,005^−24) / 0,005 = 3.256,29.
+    a = aannames(r=(0.0, 0.0), v=(0.0, 0.0), inflatie=1.005**12 - 1)
+    s = sim({"aandelen": 1.0}, a, horizon_jaren=2, inleg=1000, storting_per_maand=100)
+    assert s.jaren[2].ingelegd == 3400
+    assert s.jaren[2].ingelegd_reeel == pytest.approx(3256.29, abs=0.01)
 
 
 def test_stortingen_aan_het_eind_van_de_maand_groeien_mee():

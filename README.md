@@ -11,7 +11,7 @@ Webapplicatie waarmee een beleggingsadviseur een portefeuille op maat samenstelt
 | 3 | Klantprofiel, vragenlijst, risicoprofielen en eerste schermen | klaar |
 | 4 | Portefeuilleconstructie: voorstel, uitsluitingen, toetsing, versies | klaar |
 | 5 | Historische analyse met benchmark en grafiek | klaar |
-| 6 | Verwacht rendement (scenario's) | nog te bouwen |
+| 6 | Verwacht rendement: Monte Carlo-scenario's en instelbare aannames | klaar |
 | 7 | Rapportage | nog te bouwen |
 
 
@@ -100,7 +100,24 @@ Tests: `uv run pytest` (SQLite in het geheugen; zet `TEST_DATABASE_URL` om tegen
   geldt als risicovrij rendement.
 - Bij elke vastgelegde portefeuilleversie wordt de analyse bewaard zoals die toen was.
 
+## Verwacht rendement
+
+- 10.000 gesimuleerde verlopen over de horizon van de klant, met maandelijkse rendementen per
+  beleggingscategorie (lognormaal, met correlaties), de inleg, de maandelijkse stortingen, de
+  lopende fondskosten en eventuele overige kosten. Met een vast startgetal, zodat dezelfde invoer
+  dezelfde uitkomst geeft.
+- Getoond worden een slecht, verwacht en goed scenario (5e, 50e en 95e percentiel), de kans op het
+  doelvermogen, de kans op minder dan ingelegd en het effect van kosten en inflatie, nominaal en
+  in koopkracht van vandaag.
+- De aannames (rendement, volatiliteit, correlaties, inflatie, bron en peildatum) zijn te beheren
+  in het scherm Aannames. Elke wijziging is een nieuwe versie; elke vastgelegde portefeuille
+  bewaart haar scenario en de gebruikte aannames.
+
 ## Nog te controleren
+
+- **De meegeleverde aannames zijn voorbeeldwaarden zonder gepubliceerde bron.** Vervang ze door
+  aannames uit een erkende bron voordat de scenario's in een advies worden gebruikt. Het scherm
+  toont een waarschuwing zolang de voorbeeldwaarden gelden.
 
 - De benchmarkfondsen zijn een voorbeeldkeuze. Voor een eerlijke vergelijking is een index of een
   breed geaccepteerde mixbenchmark beter; daarvoor is een andere databron nodig.

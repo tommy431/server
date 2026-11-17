@@ -261,3 +261,43 @@ export const procent = (fractie: number) =>
   `${new Intl.NumberFormat("nl-NL", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(fractie * 100)}%`;
 export const maand = (iso: string) =>
   new Intl.DateTimeFormat("nl-NL", { month: "short", year: "numeric" }).format(new Date(iso));
+
+export type Jaarpunt = {
+  jaar: number;
+  ingelegd: number;
+  ingelegd_reeel: number;
+  nominaal: [number, number, number];
+  reeel: [number, number, number];
+};
+export type ScenarioUitkomst = {
+  scenario: {
+    paden: number;
+    horizon_jaren: number;
+    inleg: number;
+    storting_per_maand: number;
+    doelvermogen: number | null;
+    kosten_pct: number;
+    verwacht_rendement: number;
+    verwachte_volatiliteit: number;
+    jaren: Jaarpunt[];
+    kans_doel_nominaal: number | null;
+    kans_doel_reeel: number | null;
+    kans_minder_dan_ingelegd: number;
+    mediaan_zonder_kosten: number;
+    kosten_effect_mediaan: number;
+    inflatie_effect_mediaan: number;
+  } | null;
+  reden: string | null;
+  lopende_kosten_pct: number;
+  overige_kosten_pct: number;
+  gewichten: Record<string, number>;
+  aannames: AannameSet & { id: number };
+};
+export type AannameSet = {
+  bron: string;
+  peildatum: string;
+  categorieen: Record<string, { rendement: number; volatiliteit: number }>;
+  correlaties: Record<string, Record<string, number>>;
+  inflatie: number;
+};
+export type AannamesUit = AannameSet & { id: number; vastgelegd_op: string };

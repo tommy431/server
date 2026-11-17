@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { Analyse } from "../Analyse";
+import { Scenario } from "../Scenario";
 import {
   AnalyseUitkomst,
+  ScenarioUitkomst,
   Instrument,
   Klant,
   Resultaat,
@@ -71,6 +73,8 @@ export default function Portefeuille() {
   const [bezig, setBezig] = useState(false);
   const [analyse, setAnalyse] = useState<AnalyseUitkomst | null>(null);
   const [analyseBezig, setAnalyseBezig] = useState(false);
+  const [scenario, setScenario] = useState<ScenarioUitkomst | null>(null);
+  const [overigeKosten, setOverigeKosten] = useState("0");
 
   const [filter, setFilter] = useState({ categorie: "aandelen", regio: "", sector: "" });
   const [gekozen, setGekozen] = useState("");
@@ -145,12 +149,14 @@ export default function Portefeuille() {
     return () => clearTimeout(timer);
   }, [gewichten, uitsluitingen, klaar, id]);
 
+  const overigeKostenPct = Math.min(5, Math.max(0, Number(overigeKosten.replace(",", ".")) || 0));
   // De historische analyse volgt de doorrekening, maar alleen als de gewichten op 100% uitkomen.
   const analyseNummer = useRef(0);
   const totaal = resultaat?.doorrekening.totaal;
   useEffect(() => {
     if (!klaar || totaal !== 10000) {
       setAnalyse(null);
+      setScenario(null);
       return;
     }
     const nummer = ++analyseNummer.current;
@@ -168,10 +174,28 @@ export default function Portefeuille() {
         if (nummer === analyseNummer.current) setAnalyseBezig(false);
       }
     }, 600);
-    return () => clearTimeout(timer);
+    const timerScenario = setTimeout(async () => {
+      try {
+        const uit = await api<ScenarioUitkomst>(`/klanten/${id}/portefeuille/scenario`, {
+          methode: "POST",
+          body: {
+            posities: Object.entries(gewichten).map(([isin, gewicht]) => ({ isin, gewicht })),
+            uitsluitingen,
+            overige_kosten_pct: overigeKostenPct,
+          },
+        });
+        if (nummer === analyseNummer.current) setScenario(uit);
+      } catch {
+        if (nummer === analyseNummer.current) setScenario(null);
+      }
+    }, 600);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(timerScenario);
+    };
     // De doorrekening bepaalt of de gewichten geldig zijn; daarna telt alleen de samenstelling.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resultaat, klaar, id]);
+  }, [resultaat, klaar, id, overigeKostenPct]);
 
   if (!klant || !resultaat) {
     return (
@@ -240,6 +264,7 @@ export default function Portefeuille() {
         body: {
           posities: Object.entries(gewichten).map(([isin, gewicht]) => ({ isin, gewicht })),
           uitsluitingen,
+          overige_kosten_pct: overigeKostenPct,
           toelichting: toelichting || null,
         },
       });
@@ -553,6 +578,23 @@ export default function Portefeuille() {
         {analyse ? (
           <div className={analyseBezig ? "verouderd" : ""}>
             <Analyse uitkomst={analyse} />
+          </div>
+        ) : (
+          <p className="zacht">
+            {totaal === 10000 ? "Bezig met berekenen…" : "Beschikbaar zodra de gewichten optellen tot 100%."}
+          </p>
+        )}
+      </section>
+
+      <section className="kaart">
+        <h2>Verwacht rendement</h2>
+        <label className="smal-veld">
+          Overige kosten % per jaar (advies, beheer, bewaring)
+          <input inputMode="decimal" value={overigeKosten} onChange={(e) => setOverigeKosten(e.target.value)} />
+        </label>
+        {scenario ? (
+          <div className={analyseBezig ? "verouderd" : ""}>
+            <Scenario uitkomst={scenario} />
           </div>
         ) : (
           <p className="zacht">

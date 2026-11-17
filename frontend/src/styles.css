@@ -561,3 +561,56 @@ ul.lijst li {
 .verouderd {
   opacity: 0.55;
 }
+
+.grafiek .waaier {
+  fill: #b7d3f6;
+}
+.grafiek .lijn.inleg {
+  stroke: var(--zacht);
+  stroke-width: 1.5;
+}
+.grafiek .doellijn {
+  stroke: var(--tekst);
+  stroke-width: 1;
+}
+.vlakje {
+  display: inline-block;
+  width: 14px;
+  height: 10px;
+  border-radius: 2px;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+.vlakje.waaier {
+  background: #b7d3f6;
+}
+.sleutel.inleg {
+  background: var(--zacht);
+  height: 2px;
+}
+.sleutel.doel {
+  background: var(--tekst);
+  height: 1px;
+}
+.legenda {
+  flex-wrap: wrap;
+}
+.smal-veld {
+  max-width: 360px;
+}
+.schuifvlak {
+  overflow-x: auto;
+}
+.keuzerij {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 20px;
+  margin: 8px 0 12px;
+}
+.keuzerij label.keuze {
+  margin: 0;
+}
+.grafiek .doellijn {
+  stroke-width: 1.5;
+}

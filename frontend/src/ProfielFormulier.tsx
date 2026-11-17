@@ -31,8 +31,10 @@ export default function ProfielFormulier({
   const [duurzaamheid, setDuurzaamheid] = useState(vorige?.duurzaamheid ?? "geen");
   const [uitsluitingen, setUitsluitingen] = useState<string[]>(vorige?.uitsluitingen ?? []);
   const [duurzaamToelichting, setDuurzaamToelichting] = useState(vorige?.duurzaamheid_toelichting ?? "");
-  const [gekozen, setGekozen] = useState("");
-  const [afwijking, setAfwijking] = useState("");
+  // Een eerder gekozen defensiever profiel en de toelichting worden overgenomen.
+  const eerderAfgeweken = vorige !== null && vorige.risicoprofiel !== vorige.afgeleid_risicoprofiel;
+  const [gekozen, setGekozen] = useState(eerderAfgeweken ? vorige.risicoprofiel : "");
+  const [afwijking, setAfwijking] = useState(eerderAfgeweken ? (vorige.afwijking_toelichting ?? "") : "");
   const [uitkomst, setUitkomst] = useState<Uitkomst | null>(null);
   const [fouten, setFouten] = useState<string[]>([]);
   const [bezig, setBezig] = useState(false);
@@ -63,8 +65,8 @@ export default function ProfielFormulier({
 
   // Een eerder gekozen profiel dat niet langer defensiever is dan het afgeleide vervalt.
   useEffect(() => {
-    if (gekozen && !defensiever.some((p) => p.code === gekozen)) setGekozen("");
-  }, [defensiever, gekozen]);
+    if (afgeleid && gekozen && !defensiever.some((p) => p.code === gekozen)) setGekozen("");
+  }, [afgeleid, defensiever, gekozen]);
 
   async function verstuur(e: FormEvent) {
     e.preventDefault();
