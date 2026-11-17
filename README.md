@@ -13,6 +13,7 @@ Webapplicatie waarmee een beleggingsadviseur een portefeuille op maat samenstelt
 | 5 | Historische analyse met benchmark en grafiek | klaar |
 | 6 | Verwacht rendement: Monte Carlo-scenario's en instelbare aannames | klaar |
 | 7 | Adviesrapport als PDF per vastgelegde versie | klaar |
+| 8 | Opvolging: werkelijk bezit, herbalanceren, signalen en evaluaties | klaar |
 
 
 ## Starten
@@ -178,6 +179,27 @@ voor de klant:
   een momentopname van de versie.
 - Het lettertype DejaVu Sans staat in `backend/app/lettertypen` (vrije licentie, zie
   `LICENTIE-DejaVu.txt`).
+
+## Opvolging na het advies
+
+Via **Opvolging** bij een klant, en het overzicht **Signalen** in het menu.
+
+- **Werkelijk bezit:** de adviseur neemt de aantallen stukken en het geldsaldo over van het
+  depotoverzicht van de klant, met een peildatum. Elke opgave is een nieuwe versie. De waarde wordt
+  berekend tegen de laatst bekende slotkoers (euro-fondsen).
+- **Vergelijking met het advies:** per fonds het werkelijke gewicht naast het geadviseerde, en per
+  beleggingscategorie het gewicht tegen de bandbreedtes van de laatst vastgelegde portefeuilleversie.
+- **Herbalanceringsvoorstel:** terug naar de gewichten van het advies, in hele stukken. Eerst
+  verkopen (fondsen buiten het advies helemaal), dan kopen met het geldsaldo en de opbrengst; bij te
+  weinig geld worden de aankopen naar rato verkleind. Afwijkingen onder € 250 blijven staan.
+  Transactiekosten, spreads en belastingen zijn niet meegerekend: het is een hulpmiddel, geen order.
+- **Evaluaties:** datum, uitkomst en een versleutelde notitie. De volgende evaluatie is twaalf
+  maanden na het laatste advies of de laatste evaluatie.
+- **Signalen**, de meest dringende eerst: evaluatie verlopen of binnen een maand, profiel herzien na
+  het advies, categorie buiten de bandbreedte, fonds in bezit maar niet in het advies, een afwijking
+  per fonds van meer dan 5 procentpunt, geen koers, bezit ouder dan drie maanden, of nog geen
+  profiel, advies of bezit.
+- Vastleggen van bezit en evaluaties komt in het logboek.
 
 ## Rollen en vier-ogenprincipe
 

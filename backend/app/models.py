@@ -376,3 +376,38 @@ class Inlogpoging(Basis):
     email: Mapped[str] = mapped_column(String(254), index=True)
     ip: Mapped[str] = mapped_column(String(64), index=True)
     gelukt: Mapped[bool] = mapped_column(Boolean)
+
+
+class Bezitsopgave(Basis):
+    """Het werkelijke bezit van een klant op een peildatum, bijvoorbeeld van een depotoverzicht.
+
+    Elke opgave is een nieuwe versie; de nieuwste geldt.
+    """
+
+    __tablename__ = "bezitsopgave"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    klant_id: Mapped[int] = mapped_column(ForeignKey("klant.id", ondelete="CASCADE"), index=True)
+    peildatum: Mapped[date] = mapped_column(Date)
+    posities: Mapped[dict] = mapped_column(JSON)  # ISIN → aantal stukken
+    kas_eur: Mapped[float] = mapped_column(Float)
+    vastgelegd_door: Mapped[int] = mapped_column(ForeignKey("adviseur.id"))
+    vastgelegd_op: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class Evaluatie(Basis):
+    """Een (jaarlijkse) evaluatie met de klant."""
+
+    __tablename__ = "evaluatie"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    klant_id: Mapped[int] = mapped_column(ForeignKey("klant.id", ondelete="CASCADE"), index=True)
+    datum: Mapped[date] = mapped_column(Date)
+    uitkomst: Mapped[str] = mapped_column(String(30))  # "ongewijzigd", "aangepast", "herbalanceren"
+    notitie: Mapped[str | None] = mapped_column(VersleuteldeTekst)
+    vastgelegd_door: Mapped[int] = mapped_column(ForeignKey("adviseur.id"))
+    vastgelegd_op: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

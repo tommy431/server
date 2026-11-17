@@ -12,6 +12,8 @@ import Gebruikers from "./pages/Gebruikers";
 import Logboek from "./pages/Logboek";
 import Modelallocaties from "./pages/Modelallocaties";
 import Onderneming from "./pages/Onderneming";
+import Opvolging from "./pages/Opvolging";
+import Signalen from "./pages/Signalen";
 import Portefeuille from "./pages/Portefeuille";
 
 export default function App() {
@@ -60,6 +62,7 @@ export default function App() {
         <strong>Portefeuille op maat</strong>
         <nav>
           <NavLink to="/klanten">Klanten</NavLink>
+          <NavLink to="/signalen">Signalen</NavLink>
           <NavLink to="/modelallocaties">Modelallocaties</NavLink>
           <NavLink to="/aannames">Aannames</NavLink>
           <NavLink to="/data">Data</NavLink>
@@ -86,6 +89,8 @@ export default function App() {
           <Route path="/klanten" element={<Klanten />} />
           <Route path="/klanten/:id" element={<KlantDetail />} />
           <Route path="/klanten/:id/portefeuille" element={<Portefeuille />} />
+          <Route path="/klanten/:id/opvolging" element={<Opvolging />} />
+          <Route path="/signalen" element={<Signalen />} />
           <Route path="/modelallocaties" element={<Modelallocaties adviseur={adviseur} />} />
           <Route path="/aannames" element={<Aannames adviseur={adviseur} />} />
           <Route path="/data" element={<Data adviseur={adviseur} />} />

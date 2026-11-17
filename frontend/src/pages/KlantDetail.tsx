@@ -250,6 +250,11 @@ export default function KlantDetail() {
                 Portefeuille samenstellen
               </Link>
             )}
+            {profiel && (
+              <Link className="knop tweede" to={`/klanten/${id}/opvolging`}>
+                Opvolging
+              </Link>
+            )}
             {!klant.gearchiveerd && (
               <button className={profiel ? "tweede" : ""} onClick={() => setFormulier(true)}>
                 {profiel ? "Profiel herzien" : "Profiel vastleggen"}

@@ -68,12 +68,6 @@ class TweestapsStart(BaseModel):
     qr_svg: str
 
 
-def _mislukt(db: Db, email: str, melding: str) -> HTTPException:
-    leg_vast(db, "login_mislukt", entiteit="adviseur", entiteit_id=email)
-    db.commit()
-    return HTTPException(status.HTTP_401_UNAUTHORIZED, melding)
-
-
 def _ip(request: Request) -> str:
     # Achter een proxy vult uvicorn dit met --proxy-headers alleen voor vertrouwde proxy's in.
     return (request.client.host if request.client else "onbekend")[:64]

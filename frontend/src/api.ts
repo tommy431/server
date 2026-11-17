@@ -396,3 +396,41 @@ export async function downloadPdf(pad: string, bestandsnaam: string): Promise<vo
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
+
+export type Signaal = { ernst: "hoog" | "middel" | "laag"; code: string; melding: string };
+export type Positiewaarde = {
+  isin: string;
+  naam: string;
+  categorie: string;
+  aantal: number;
+  koers: number | null;
+  koersdatum: string | null;
+  waarde: number;
+  gewicht: number;
+  advies: number;
+};
+export type Transactie = { isin: string; naam: string; actie: "koop" | "verkoop"; aantal: number; koers: number; bedrag: number };
+export type Evaluatie = { id: number; datum: string; uitkomst: string; notitie: string | null; door: string };
+export type Opvolging = {
+  advies: {
+    versie: number;
+    datum: string;
+    risicoprofiel: string;
+    banden: Record<string, { streef: number; minimum: number; maximum: number }>;
+    posities: Record<string, number>;
+  } | null;
+  bezit: { peildatum: string; posities: Record<string, number>; kas_eur: number; vastgelegd_op: string } | null;
+  waardering: {
+    totaal: number;
+    kas: number;
+    posities: Positiewaarde[];
+    per_categorie: Record<string, number>;
+    zonder_koers: string[];
+  } | null;
+  herbalancering: { transacties: Transactie[]; kas_na: number; gewichten_na: Record<string, number> } | null;
+  herbalancering_fout: string | null;
+  signalen: Signaal[];
+  evaluaties: Evaluatie[];
+  volgende_evaluatie: string | null;
+};
+export type KlantSignalen = { klant_id: number; naam: string; signalen: Signaal[] };

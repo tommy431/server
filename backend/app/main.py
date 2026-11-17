@@ -8,6 +8,7 @@ from app.api import (
     klanten,
     logboek,
     onderneming,
+    opvolging,
     portefeuilles,
     rapporten,
     wijzigingen,
@@ -26,6 +27,7 @@ app.include_router(wijzigingen.router)
 app.include_router(onderneming.router)
 app.include_router(adviseurs.router)
 app.include_router(logboek.router)
+app.include_router(opvolging.router)
 
 
 @app.get("/gezondheid")

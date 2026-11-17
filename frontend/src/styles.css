@@ -385,13 +385,15 @@ a.knop {
 a.knop:hover {
   background: var(--accent-donker);
 }
-button.tweede {
+button.tweede,
+a.knop.tweede {
   background: var(--vlak);
   color: var(--accent);
   border: 1px solid var(--accent);
   padding: 7px 15px;
 }
-button.tweede:hover:not(:disabled) {
+button.tweede:hover:not(:disabled),
+a.knop.tweede:hover {
   background: #e8f0fb;
 }
 .melding.goed {
@@ -683,4 +685,17 @@ main.smal {
 .overdracht select {
   padding: 4px 6px;
   font-size: 13px;
+}
+.signalen {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.signalen .melding {
+  margin: 6px 0;
+}
+@media (max-width: 600px) {
+  .alleen-breed {
+    display: none;
+  }
 }

@@ -1,0 +1,168 @@
+# ruff: noqa: F811  (klant_id is een fixture uit test_portefeuille_api)
+from datetime import UTC, date, datetime, timedelta
+
+from sqlalchemy import select
+
+from app.models import Instrument, Koers, Logboek
+from tests.test_klanten import antwoorden, profiel
+from tests.test_portefeuille_api import GELD, WERELD, klant_id, pad  # noqa: F401
+
+
+def _koers(db, isin, slot, dagen_geleden=1):
+    i = db.scalar(select(Instrument).where(Instrument.isin == isin))
+    d = date.today() - timedelta(days=dagen_geleden)
+    db.add(
+        Koers(
+            instrument_id=i.id,
+            datum=d,
+            slot=slot,
+            slot_gecorrigeerd=slot * 2,
+            bron="test",
+            opgehaald_op=datetime.now(UTC),
+        )
+    )
+    db.commit()
+
+
+def _advies(ingelogd, kid):
+    posities = [{"isin": WERELD, "gewicht": 6000}, {"isin": GELD, "gewicht": 4000}]
+    r = ingelogd.post(
+        pad(kid, "versies"), json={"posities": posities, "toelichting": "Eenvoudig testadvies"}
+    )
+    assert r.status_code == 201, r.text
+
+
+def _bezit(ingelogd, kid, posities, kas=0.0, peildatum=None):
+    return ingelogd.post(
+        f"/klanten/{kid}/bezit",
+        json={
+            "peildatum": (peildatum or date.today()).isoformat(),
+            "posities": [{"isin": i, "aantal": a} for i, a in posities.items()],
+            "kas_eur": kas,
+        },
+    )
+
+
+def codes(r):
+    return [s["code"] for s in r["signalen"]]
+
+
+def test_zonder_advies_alleen_signaal(ingelogd, klant_id):
+    r = ingelogd.get(f"/klanten/{klant_id}/opvolging").json()
+    assert codes(r) == ["geen_advies"] and r["advies"] is None and r["waardering"] is None
+
+
+def test_bezit_waarderen_vergelijken_en_herbalanceren(ingelogd, klant_id, db):
+    _advies(ingelogd, klant_id)
+    _koers(db, WERELD, 50.0, dagen_geleden=5)
+    _koers(db, WERELD, 100.0)  # de laatste slotkoers telt, niet de gecorrigeerde
+    _koers(db, GELD, 10.0)
+    r = ingelogd.get(f"/klanten/{klant_id}/opvolging").json()
+    assert codes(r) == ["geen_bezit"]
+    assert r["advies"]["posities"] == {WERELD: 6000, GELD: 4000}
+
+    # 800 × 100 = 80.000 wereld, 1.000 × 10 = 10.000 geldmarkt, 10.000 kas → 90/10 i.p.v. 60/40.
+    assert _bezit(ingelogd, klant_id, {WERELD: 800, GELD: 1000}, kas=10000).status_code == 201
+    r = ingelogd.get(f"/klanten/{klant_id}/opvolging").json()
+    w = r["waardering"]
+    assert w["totaal"] == 100000
+    assert {p["isin"]: p["gewicht"] for p in w["posities"]} == {WERELD: 8000, GELD: 1000}
+    assert codes(r)[0] == "buiten_bandbreedte"
+    assert "Aandelen weegt 80,0%" in r["signalen"][0]["melding"]
+    t = {(x["isin"], x["actie"]): x["aantal"] for x in r["herbalancering"]["transacties"]}
+    assert t == {(WERELD, "verkoop"): 200, (GELD, "koop"): 3000}
+    assert r["herbalancering"]["kas_na"] == 0
+    assert r["bezit"]["kas_eur"] == 10000
+
+    acties = db.scalars(select(Logboek.actie)).all()
+    assert "bezit_vastgelegd" in acties
+
+
+def test_bezit_invoer_wordt_gecontroleerd(ingelogd, klant_id):
+    assert _bezit(ingelogd, klant_id, {"XX0000000000": 1}).status_code == 422
+    morgen = date.today() + timedelta(days=1)
+    assert _bezit(ingelogd, klant_id, {WERELD: 1}, peildatum=morgen).status_code == 422
+    r = ingelogd.post(
+        f"/klanten/{klant_id}/bezit",
+        json={
+            "peildatum": date.today().isoformat(),
+            "posities": [{"isin": WERELD, "aantal": 1}, {"isin": WERELD, "aantal": 2}],
+            "kas_eur": 0,
+        },
+    )
+    assert r.status_code == 422
+    assert _bezit(ingelogd, klant_id, {WERELD: 0}).status_code == 422
+
+
+def test_zonder_koers_geen_herbalancering(ingelogd, klant_id):
+    _advies(ingelogd, klant_id)
+    _bezit(ingelogd, klant_id, {WERELD: 10}, kas=500)
+    r = ingelogd.get(f"/klanten/{klant_id}/opvolging").json()
+    assert "geen_koers" in codes(r)
+    assert r["herbalancering"] is None and r["herbalancering_fout"]
+
+
+def test_evaluatie_vastleggen_en_volgende_datum(ingelogd, klant_id, db):
+    _advies(ingelogd, klant_id)
+    vandaag = date.today()
+    r = ingelogd.post(
+        f"/klanten/{klant_id}/evaluaties",
+        json={
+            "datum": vandaag.isoformat(),
+            "uitkomst": "ongewijzigd",
+            "notitie": " Alles in orde ",
+        },
+    )
+    assert r.status_code == 201 and r.json()["notitie"] == "Alles in orde"
+    o = ingelogd.get(f"/klanten/{klant_id}/opvolging").json()
+    assert o["evaluaties"][0]["door"] == "Test Adviseur"
+    assert (
+        o["volgende_evaluatie"] == vandaag.replace(year=vandaag.year + 1).isoformat()
+        or vandaag.month == 2
+    )
+    assert "evaluatie_verlopen" not in codes(o)
+    bad = ingelogd.post(
+        f"/klanten/{klant_id}/evaluaties", json={"datum": vandaag.isoformat(), "uitkomst": "x"}
+    )
+    assert bad.status_code == 422
+    assert "evaluatie_vastgelegd" in db.scalars(select(Logboek.actie)).all()
+
+
+def test_profiel_herzien_na_advies_en_signalenoverzicht(ingelogd, klant_id):
+    _advies(ingelogd, klant_id)
+    ingelogd.post(f"/klanten/{klant_id}/profielen", json=profiel(antwoorden=antwoorden(2, 2)))
+    zonder = ingelogd.post("/klanten", json={"naam": "Anna"}).json()["id"]
+    lijst = ingelogd.get("/signalen").json()
+    assert [k["klant_id"] for k in lijst] == [klant_id, zonder]
+    assert lijst[0]["signalen"][0]["code"] == "profiel_herzien"
+    assert [s["code"] for s in lijst[1]["signalen"]] == ["geen_profiel"]
+
+
+def test_andermans_klant_niet_zichtbaar(client, ingelogd, klant_id, db):
+    from app.models import Adviseur
+    from app.security import hash_wachtwoord
+    from tests.conftest import WACHTWOORD
+
+    db.add(
+        Adviseur(
+            email="ander@voorbeeld.nl",
+            rol="adviseur",
+            naam="Ander",
+            wachtwoord_hash=hash_wachtwoord(WACHTWOORD),
+        )
+    )
+    db.commit()
+    token = client.post(
+        "/auth/login", json={"email": "ander@voorbeeld.nl", "wachtwoord": WACHTWOORD}
+    ).json()["access_token"]
+    h = {"Authorization": f"Bearer {token}"}
+    assert client.get(f"/klanten/{klant_id}/opvolging", headers=h).status_code == 404
+    assert (
+        client.post(
+            f"/klanten/{klant_id}/bezit",
+            headers=h,
+            json={"peildatum": date.today().isoformat(), "posities": [], "kas_eur": 1},
+        ).status_code
+        == 404
+    )
+    assert client.get("/signalen", headers=h).json() == []
