@@ -211,6 +211,9 @@ class Portefeuille(Basis):
     doorrekening: Mapped[dict] = mapped_column(JSON)
     # Historische analyse op het moment van vastleggen; leeg als er geen koersen waren.
     analyse: Mapped[dict | None] = mapped_column(JSON)
+    # Scenario's op het moment van vastleggen, met de gebruikte aannameset.
+    scenario: Mapped[dict | None] = mapped_column(JSON)
+    aannameset_id: Mapped[int | None] = mapped_column(ForeignKey("aannameset.id"))
     toelichting: Mapped[str | None] = mapped_column(VersleuteldeTekst)
 
 
@@ -222,3 +225,24 @@ class Positie(Basis):
     )
     instrument_id: Mapped[int] = mapped_column(ForeignKey("instrument.id"), primary_key=True)
     gewicht: Mapped[int] = mapped_column(Integer)  # basispunten
+
+
+class Aannameset(Basis):
+    """Eén versie van de aannames voor verwachte rendementen. Wordt niet meer gewijzigd.
+
+    De nieuwste versie geldt; oudere blijven bewaard zodat vastgelegde scenario's herleidbaar zijn.
+    """
+
+    __tablename__ = "aannameset"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    vastgelegd_op: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    vastgelegd_door: Mapped[int | None] = mapped_column(ForeignKey("adviseur.id"))
+    bron: Mapped[str] = mapped_column(String(500))
+    peildatum: Mapped[date] = mapped_column(Date)
+    # Per categorie: {"rendement": 0.065, "volatiliteit": 0.16}
+    categorieen: Mapped[dict] = mapped_column(JSON)
+    correlaties: Mapped[dict] = mapped_column(JSON)
+    inflatie: Mapped[float] = mapped_column(Float)

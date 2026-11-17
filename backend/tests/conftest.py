@@ -13,7 +13,7 @@ from app.db import Basis, sessie
 from app.main import app
 from app.models import Adviseur
 from app.security import hash_wachtwoord
-from app.standaarden import zaai_standaarden
+from app.standaarden import zaai_aannames, zaai_standaarden
 
 WACHTWOORD = "een-lang-testwachtwoord"
 
@@ -32,6 +32,7 @@ def db():
     Basis.metadata.create_all(engine)
     with Session(engine, expire_on_commit=False) as s:
         zaai_standaarden(s)
+        zaai_aannames(s)
         s.commit()
         yield s
     Basis.metadata.drop_all(engine)

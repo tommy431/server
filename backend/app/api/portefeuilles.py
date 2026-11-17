@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from app.analyse import analyseer, naar_euro
+from app.api.aannames import als_aannames, huidige
 from app.api.afhankelijkheden import Db, Ingelogd
 from app.api.klanten import _eigen_klant
 from app.logboek import leg_vast
@@ -34,6 +35,7 @@ from app.portefeuille import (
     maak_voorstel,
     reken_door,
 )
+from app.scenario import simuleer
 
 router = APIRouter(tags=["portefeuille"])
 
@@ -74,7 +76,12 @@ class PortefeuilleIn(BaseModel):
     uitsluitingen: list[UitsluitingIn] = []
 
 
-class VersieIn(PortefeuilleIn):
+class ScenarioIn(PortefeuilleIn):
+    # Kosten bovenop de lopende fondskosten, bijv. advies- of beheerkosten, in procenten per jaar.
+    overige_kosten_pct: float = Field(default=0.0, ge=0, le=5)
+
+
+class VersieIn(ScenarioIn):
     toelichting: str | None = Field(default=None, max_length=2000)
 
 
@@ -126,12 +133,22 @@ class AnalyseUit(BaseModel):
     risicovrij: str | None
 
 
+class ScenarioUit(BaseModel):
+    scenario: dict | None
+    reden: str | None  # waarom er geen scenario is
+    lopende_kosten_pct: float
+    overige_kosten_pct: float
+    gewichten: dict[str, float]  # per categorie, als fractie
+    aannames: dict
+
+
 class VersieUit(ResultaatUit):
     id: int
     versie: int
     vastgelegd_op: datetime
     toelichting: str | None
     analyse: AnalyseUit | None
+    scenario: ScenarioUit | None
 
 
 class _Context:
@@ -260,6 +277,42 @@ class _Context:
             risicovrij=self.instrumenten[risicovrij].naam if risicovrij else None,
         )
 
+    def scenario(
+        self, db: Db, d: Doorrekening, overige_kosten_pct: float
+    ) -> tuple[ScenarioUit, int]:
+        """Monte Carlo-scenario's voor de verdeling naar categorie, met de huidige aannames."""
+        rij = huidige(db)
+        gewichten = {c: g / 10_000 for c, g in d.per_categorie.items() if g}
+        p = self.profiel
+        uit = ScenarioUit(
+            scenario=None,
+            reden=None,
+            lopende_kosten_pct=d.kosten_pct,
+            overige_kosten_pct=overige_kosten_pct,
+            gewichten=gewichten,
+            aannames={
+                "id": rij.id,
+                "bron": rij.bron,
+                "peildatum": rij.peildatum.isoformat(),
+                "categorieen": rij.categorieen,
+                "correlaties": rij.correlaties,
+                "inflatie": rij.inflatie,
+            },
+        )
+        if d.totaal != 10_000:
+            uit.reden = "De gewichten tellen niet op tot 100%"
+            return uit, rij.id
+        uit.scenario = simuleer(
+            gewichten,
+            als_aannames(rij),
+            horizon_jaren=p.horizon_jaren,
+            inleg=p.inleg_eur,
+            storting_per_maand=p.storting_per_maand_eur,
+            kosten_pct=d.kosten_pct + overige_kosten_pct,
+            doelvermogen=p.doelvermogen_eur,
+        ).als_dict()
+        return uit, rij.id
+
     def doorrekening_uit(self, d: Doorrekening | dict) -> DoorrekeningUit:
         gegevens = d.als_dict() if isinstance(d, Doorrekening) else d
         return DoorrekeningUit(
@@ -324,6 +377,19 @@ def analyse(klant_id: int, invoer: PortefeuilleIn, db: Db, adviseur: Ingelogd) -
     return ctx.analyseer(db, posities)
 
 
+@router.post("/klanten/{klant_id}/portefeuille/scenario", response_model=ScenarioUit)
+def scenario(klant_id: int, invoer: ScenarioIn, db: Db, adviseur: Ingelogd) -> ScenarioUit:
+    """Scenario's voor de vermogensontwikkeling. Slaat niets op."""
+    ctx = _Context(db, adviseur, klant_id)
+    uitsluitingen = ctx.uitsluitingen(invoer.uitsluitingen)
+    posities = _posities(invoer.posities)
+    d = ctx.reken_door(posities, uitsluitingen)
+    blokkerend = [b.melding for b in d.fouten if b.code != "uitgesloten"]
+    if blokkerend:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, blokkerend)
+    return ctx.scenario(db, d, invoer.overige_kosten_pct)[0]
+
+
 def _versie_uit(
     db: Db, ctx: _Context, p: Portefeuille, profielversies: dict[int, int]
 ) -> VersieUit:
@@ -337,6 +403,7 @@ def _versie_uit(
         vastgelegd_op=p.vastgelegd_op,
         toelichting=p.toelichting,
         analyse=p.analyse,
+        scenario=p.scenario,
         risicoprofiel=p.risicoprofiel,
         klantprofiel_versie=profielversies[p.klantprofiel_id],
         banden=p.banden,
@@ -389,6 +456,7 @@ def leg_vast_versie(klant_id: int, invoer: VersieIn, db: Db, adviseur: Ingelogd)
             + [b.melding for b in d.afwijkingen],
         )
 
+    scenario_uit, aannameset_id = ctx.scenario(db, d, invoer.overige_kosten_pct)
     vorige = db.scalar(
         select(func.max(Portefeuille.versie)).where(Portefeuille.klant_id == klant_id)
     )
@@ -402,6 +470,8 @@ def leg_vast_versie(klant_id: int, invoer: VersieIn, db: Db, adviseur: Ingelogd)
         uitsluitingen=[asdict(u) for u in uitsluitingen],
         doorrekening=d.als_dict(),
         analyse=ctx.analyseer(db, posities).model_dump(),
+        scenario=scenario_uit.model_dump(),
+        aannameset_id=aannameset_id,
         toelichting=toelichting,
     )
     db.add(portefeuille)
