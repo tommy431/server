@@ -31,10 +31,28 @@ def adviseur_aanmaken(db: Session, args: argparse.Namespace) -> int:
     except ValueError as fout:
         print(fout, file=sys.stderr)
         return 1
-    db.add(Adviseur(email=email, naam=args.naam, wachtwoord_hash=hash_))
+    db.add(Adviseur(email=email, naam=args.naam, rol=args.rol, wachtwoord_hash=hash_))
     leg_vast(db, "adviseur_aangemaakt", entiteit="adviseur", entiteit_id=email)
     db.commit()
-    print(f"Adviseur {email} aangemaakt")
+    print(f"Adviseur {email} aangemaakt met rol {args.rol}")
+    return 0
+
+
+def rol_wijzigen(db: Session, args: argparse.Namespace) -> int:
+    adviseur = db.scalar(select(Adviseur).where(Adviseur.email == args.email.lower()))
+    if adviseur is None:
+        print(f"Geen adviseur met {args.email}", file=sys.stderr)
+        return 1
+    oud, adviseur.rol = adviseur.rol, args.rol
+    leg_vast(
+        db,
+        "rol_gewijzigd",
+        entiteit="adviseur",
+        entiteit_id=adviseur.email,
+        details={"oud": oud, "nieuw": args.rol},
+    )
+    db.commit()
+    print(f"Rol van {adviseur.email}: {oud} → {args.rol}")
     return 0
 
 
@@ -75,6 +93,22 @@ def data_verversen(db: Session, args: argparse.Namespace) -> int:
     return 1 if mislukt else 0
 
 
+def testomgeving(db: Session, args: argparse.Namespace) -> int:
+    from app.config import instellingen
+    from app.testomgeving import vul
+
+    url = instellingen().database_url
+    # Wist de hele database: alleen toegestaan voor een SQLite-bestand met "e2e" in de naam.
+    if not (url.startswith("sqlite") and "e2e" in url):
+        print(
+            "Alleen toegestaan voor een SQLite-testdatabase met 'e2e' in de naam", file=sys.stderr
+        )
+        return 1
+    vul(db)
+    print("Testomgeving klaar")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="app.cli")
     sub = parser.add_subparsers(required=True)
@@ -82,11 +116,20 @@ def main() -> int:
     p = sub.add_parser("adviseur-aanmaken", help="Maak een account voor een adviseur")
     p.add_argument("--email", required=True)
     p.add_argument("--naam", required=True)
+    p.add_argument("--rol", choices=("adviseur", "beheerder"), default="adviseur")
     p.set_defaults(func=adviseur_aanmaken)
+
+    p = sub.add_parser("rol-wijzigen", help="Maak een adviseur beheerder of weer adviseur")
+    p.add_argument("--email", required=True)
+    p.add_argument("--rol", choices=("adviseur", "beheerder"), required=True)
+    p.set_defaults(func=rol_wijzigen)
 
     p = sub.add_parser("universum-laden", help="Laad of werk de instrumentenlijst bij uit CSV")
     p.add_argument("bestand", nargs="?", default="data/universum.csv")
     p.set_defaults(func=universum_laden)
+
+    p = sub.add_parser("testomgeving", help="Vul een lege e2e-testdatabase (wist alles)")
+    p.set_defaults(func=testomgeving)
 
     p = sub.add_parser("data-verversen", help="Haal koersen en wisselkoersen opnieuw op")
     p.set_defaults(func=data_verversen)

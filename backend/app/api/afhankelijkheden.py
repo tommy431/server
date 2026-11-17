@@ -27,3 +27,12 @@ def huidige_adviseur(
 
 
 Ingelogd = Annotated[Adviseur, Depends(huidige_adviseur)]
+
+
+def huidige_beheerder(adviseur: Ingelogd) -> Adviseur:
+    if adviseur.rol != "beheerder":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Alleen een beheerder mag dit doen")
+    return adviseur
+
+
+Beheerder = Annotated[Adviseur, Depends(huidige_beheerder)]

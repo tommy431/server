@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
 
-from app.api.afhankelijkheden import Db, Ingelogd
+from app.api.afhankelijkheden import Beheerder, Db, Ingelogd
 from app.data.bronnen import BronFout, EcbBron, Koerspunt, YahooBron, lees_koersen_csv
 from app.data.kwaliteit import controleer_reeks
 from app.data.universum import UniversumFout, laad_universum
@@ -111,7 +111,7 @@ def lijst(
 
 
 @router.post("/instrumenten/import")
-async def importeer_universum(db: Db, adviseur: Ingelogd, bestand: UploadFile) -> dict:
+async def importeer_universum(db: Db, adviseur: Beheerder, bestand: UploadFile) -> dict:
     tekst = await _lees_upload(bestand)
     try:
         toegevoegd, bijgewerkt = laad_universum(db, tekst)
@@ -148,7 +148,7 @@ def koersen(
 
 @router.post("/instrumenten/{instrument_id}/koersen/import")
 async def importeer_koersen(
-    instrument_id: int, db: Db, adviseur: Ingelogd, bestand: UploadFile
+    instrument_id: int, db: Db, adviseur: Beheerder, bestand: UploadFile
 ) -> dict:
     instrument = _instrument(db, instrument_id)
     tekst = await _lees_upload(bestand)

@@ -5,7 +5,8 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, select
 
-from app.api.afhankelijkheden import Db, Ingelogd
+from app.api.afhankelijkheden import Beheerder, Db, Ingelogd
+from app.api.wijzigingen import VoorstelUit, dien_in, toepasser
 from app.logboek import leg_vast
 from app.models import (
     CATEGORIEEN,
@@ -262,11 +263,14 @@ def risicoprofielen(db: Db, _: Ingelogd) -> list[RisicoprofielUit]:
     return [_risicoprofiel_uit(db, p) for p in profielen]
 
 
-@router.put("/risicoprofielen/{code}/allocatie", response_model=RisicoprofielUit)
+@router.put("/risicoprofielen/{code}/allocatie", response_model=VoorstelUit)
 def wijzig_allocatie(
-    code: str, regels: list[AllocatieRegel], db: Db, adviseur: Ingelogd
-) -> RisicoprofielUit:
-    """Wijzigt de modelallocatie. Geldt voor alle adviseurs; al vastgelegde adviezen wijzigen niet."""
+    code: str, regels: list[AllocatieRegel], db: Db, beheerder: Beheerder
+) -> VoorstelUit:
+    """Stelt een nieuwe modelallocatie voor. Met vier-ogenprincipe pas na goedkeuring van kracht.
+
+    Geldt voor alle adviseurs; al vastgelegde adviezen wijzigen niet.
+    """
     profiel = db.scalar(select(Risicoprofiel).where(Risicoprofiel.code == code))
     if profiel is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Risicoprofiel niet gevonden")
@@ -278,7 +282,29 @@ def wijzig_allocatie(
     fouten = controleer_allocatie(nieuw, CATEGORIEEN)
     if fouten:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, fouten)
+    oud = {
+        r.categorie: [r.streef, r.minimum, r.maximum]
+        for r in db.scalars(
+            select(Modelallocatie).where(Modelallocatie.risicoprofiel_id == profiel.id)
+        )
+    }
+    return dien_in(
+        db,
+        beheerder,
+        "modelallocatie",
+        code,
+        {"regels": {c: list(v) for c, v in nieuw.items()}},
+        {"regels": oud},
+    )
 
+
+@toepasser("modelallocatie")
+def _pas_allocatie_toe(db, voorstel) -> int:
+    profiel = db.scalar(select(Risicoprofiel).where(Risicoprofiel.code == voorstel.sleutel))
+    nieuw = {c: tuple(v) for c, v in voorstel.inhoud["regels"].items()}
+    fouten = controleer_allocatie(nieuw, CATEGORIEEN)
+    if profiel is None or fouten:
+        raise HTTPException(status.HTTP_409_CONFLICT, fouten or ["Risicoprofiel bestaat niet meer"])
     bestaand = {
         r.categorie: r
         for r in db.scalars(
@@ -295,13 +321,12 @@ def wijzig_allocatie(
     leg_vast(
         db,
         "modelallocatie_gewijzigd",
-        adviseur_id=adviseur.id,
+        adviseur_id=voorstel.voorgesteld_door,
         entiteit="risicoprofiel",
-        entiteit_id=code,
-        details={"oud": oud, "nieuw": {c: list(v) for c, v in nieuw.items()}},
+        entiteit_id=voorstel.sleutel,
+        details={"oud": oud, "nieuw": voorstel.inhoud["regels"], "voorstel": voorstel.id},
     )
-    db.commit()
-    return _risicoprofiel_uit(db, profiel)
+    return profiel.id
 
 
 # --- klanten ---------------------------------------------------------------------------

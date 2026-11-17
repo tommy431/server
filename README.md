@@ -25,7 +25,7 @@ cd backend
 cp ../.env.example .env        # vul JWT_GEHEIM en VERSLEUTELSLEUTEL in
 uv sync
 uv run alembic upgrade head
-uv run python -m app.cli adviseur-aanmaken --email jij@voorbeeld.nl --naam "Jouw Naam"
+uv run python -m app.cli adviseur-aanmaken --email jij@voorbeeld.nl --naam "Jouw Naam" --rol beheerder
 uv run python -m app.cli universum-laden
 uv run python -m app.cli data-verversen
 uv run uvicorn app.main:app --reload
@@ -44,7 +44,14 @@ Open daarna http://localhost:5173 en log in met het aangemaakte account.
 Bewaar `VERSLEUTELSLEUTEL` veilig en apart van de database: zonder die sleutel zijn de
 klantgegevens niet meer te lezen.
 
-Tests: `uv run pytest` (SQLite in het geheugen; zet `TEST_DATABASE_URL` om tegen PostgreSQL te testen).
+Tests:
+
+- Backend: `cd backend && uv run pytest` (SQLite in het geheugen; zet `TEST_DATABASE_URL` om tegen
+  PostgreSQL te testen).
+- Browsertests: `cd frontend && npm run e2e`. Start zelf de server en de schermen tegen een aparte
+  SQLite-testdatabase (`backend/e2e-test.db`) met gegenereerde koersen; er is geen internet of
+  PostgreSQL nodig. Eenmalig: `npx playwright install chromium`, of wijs met `CHROMIUM_PAD` een
+  bestaande Chromium aan.
 
 ## Data
 
@@ -144,6 +151,17 @@ voor de klant:
   een momentopname van de versie.
 - Het lettertype DejaVu Sans staat in `backend/app/lettertypen` (vrije licentie, zie
   `LICENTIE-DejaVu.txt`).
+
+## Rollen en vier-ogenprincipe
+
+- Er zijn twee rollen: **adviseur** en **beheerder**. Iedereen kan modelallocaties en aannames
+  inzien; alleen een beheerder kan ze wijzigen, en alleen een beheerder kan de fondslijst en
+  koersbestanden importeren.
+- Een wijziging van modelallocaties of aannames is eerst een **voorstel**. Een tweede beheerder
+  keurt het goed of wijst het af (met reden); de indiener kan het intrekken. Alle stappen staan in
+  het logboek.
+- Is er maar één beheerder, zet dan `VIER_OGEN=false`; wijzigingen worden dan direct doorgevoerd.
+- Rollen toekennen: `uv run python -m app.cli rol-wijzigen --email ... --rol beheerder`.
 
 ## Klantgegevens verwijderen
 

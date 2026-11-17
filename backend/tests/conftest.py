@@ -1,6 +1,8 @@
 import os
 
 os.environ["JWT_GEHEIM"] = "test-geheim-alleen-voor-de-testsuite-0123456789"
+# Standaard zonder vier-ogenprincipe; tests in test_rollen.py zetten het aan.
+os.environ["VIER_OGEN"] = "false"
 os.environ["VERSLEUTELSLEUTEL"] = "dGVzdHNsZXV0ZWwtdGVzdHNsZXV0ZWwtdGVzdHNsZXU="
 
 import pytest
@@ -43,6 +45,7 @@ def db():
 def adviseur(db):
     a = Adviseur(
         email="adviseur@voorbeeld.nl",
+        rol="beheerder",
         naam="Test Adviseur",
         wachtwoord_hash=hash_wachtwoord(WACHTWOORD),
     )

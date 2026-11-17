@@ -34,9 +34,12 @@ def test_nieuwe_versie_vastleggen_met_geschiedenis_en_logboek(ingelogd, db, advi
     nieuw = aannames_in()
     nieuw["categorieen"]["aandelen"]["rendement"] = 0.06
     r = ingelogd.post("/aannames", json=nieuw)
-    assert r.status_code == 201 and r.json()["bron"] == "Testbron"
+    # Zonder vier-ogenprincipe wordt het voorstel direct doorgevoerd.
+    assert r.status_code == 201 and r.json()["status"] == "doorgevoerd"
+    assert r.json()["inhoud"]["bron"] == "Testbron"
     assert ingelogd.get("/aannames").json()["categorieen"]["aandelen"]["rendement"] == 0.06
-    assert [x["id"] for x in ingelogd.get("/aannames/geschiedenis").json()] == [r.json()["id"], 1]
+    nieuw_id = r.json()["resultaat_id"]
+    assert [x["id"] for x in ingelogd.get("/aannames/geschiedenis").json()] == [nieuw_id, 1]
     regel = db.scalar(select(Logboek).where(Logboek.actie == "aannames_vastgelegd"))
     assert regel.adviseur_id == adviseur.id and regel.details["bron"] == "Testbron"
 

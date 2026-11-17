@@ -4,7 +4,8 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from app.api.afhankelijkheden import Db, Ingelogd
+from app.api.afhankelijkheden import Beheerder, Db, Ingelogd
+from app.api.wijzigingen import VoorstelUit, dien_in, toepasser
 from app.logboek import leg_vast
 from app.models import CATEGORIEEN, Aannameset
 from app.scenario import Aannames, controleer
@@ -75,9 +76,9 @@ def geschiedenis(db: Db, _: Ingelogd) -> list[AannamesUit]:
     return [_uit(r) for r in db.scalars(select(Aannameset).order_by(Aannameset.id.desc()))]
 
 
-@router.post("/aannames", response_model=AannamesUit, status_code=status.HTTP_201_CREATED)
-def leg_vast_aannames(invoer: AannamesIn, db: Db, adviseur: Ingelogd) -> AannamesUit:
-    """Legt een nieuwe versie van de aannames vast. Geldt voor alle adviseurs."""
+@router.post("/aannames", response_model=VoorstelUit, status_code=status.HTTP_201_CREATED)
+def leg_vast_aannames(invoer: AannamesIn, db: Db, beheerder: Beheerder) -> VoorstelUit:
+    """Stelt een nieuwe versie van de aannames voor. Geldt na doorvoeren voor alle adviseurs."""
     if set(invoer.categorieen) != set(CATEGORIEEN) or set(invoer.correlaties) != set(CATEGORIEEN):
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -98,30 +99,55 @@ def leg_vast_aannames(invoer: AannamesIn, db: Db, adviseur: Ingelogd) -> Aanname
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             [f"Crisisschok voor {c} valt buiten −95% tot +50%" for c in buiten],
         )
-    rij = Aannameset(
-        vastgelegd_door=adviseur.id,
-        stress={c: invoer.stress[c] for c in CATEGORIEEN},
-        bron=invoer.bron.strip(),
-        peildatum=invoer.peildatum,
-        categorieen={c: invoer.categorieen[c].model_dump() for c in CATEGORIEEN},
-        correlaties={
+    inhoud = {
+        "bron": invoer.bron.strip(),
+        "peildatum": invoer.peildatum.isoformat(),
+        "categorieen": {c: invoer.categorieen[c].model_dump() for c in CATEGORIEEN},
+        "correlaties": {
             a: {b: invoer.correlaties[a].get(b) for b in CATEGORIEEN} for a in CATEGORIEEN
         },
-        inflatie=invoer.inflatie,
-    )
+        "stress": {c: invoer.stress[c] for c in CATEGORIEEN},
+        "inflatie": invoer.inflatie,
+    }
+    rij = _als_rij(inhoud)
     onvolledig = [a for a in CATEGORIEEN for b in CATEGORIEEN if rij.correlaties[a][b] is None]
     fouten = ["De correlatiematrix is onvolledig"] if onvolledig else controleer(als_aannames(rij))
     if fouten:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, fouten)
+    vorige = db.scalar(select(Aannameset).order_by(Aannameset.id.desc()).limit(1))
+    return dien_in(
+        db,
+        beheerder,
+        "aannames",
+        None,
+        inhoud,
+        _uit(vorige).model_dump(mode="json") if vorige else None,
+    )
+
+
+def _als_rij(inhoud: dict) -> Aannameset:
+    return Aannameset(
+        bron=inhoud["bron"],
+        peildatum=date.fromisoformat(inhoud["peildatum"]),
+        categorieen=inhoud["categorieen"],
+        correlaties=inhoud["correlaties"],
+        stress=inhoud["stress"],
+        inflatie=inhoud["inflatie"],
+    )
+
+
+@toepasser("aannames")
+def _pas_aannames_toe(db, voorstel) -> int:
+    rij = _als_rij(voorstel.inhoud)
+    rij.vastgelegd_door = voorstel.voorgesteld_door
     db.add(rij)
     db.flush()
     leg_vast(
         db,
         "aannames_vastgelegd",
-        adviseur_id=adviseur.id,
+        adviseur_id=voorstel.voorgesteld_door,
         entiteit="aannameset",
         entiteit_id=rij.id,
-        details={"bron": rij.bron, "peildatum": rij.peildatum.isoformat()},
+        details={"bron": rij.bron, "peildatum": rij.peildatum.isoformat(), "voorstel": voorstel.id},
     )
-    db.commit()
-    return _uit(rij)
+    return rij.id

@@ -37,7 +37,12 @@ def test_login_en_mij(client, adviseur, db):
     assert r.status_code == 200
     token = r.json()["access_token"]
     mij = client.get("/auth/mij", headers={"Authorization": f"Bearer {token}"})
-    assert mij.json() == {"id": adviseur.id, "email": adviseur.email, "naam": adviseur.naam}
+    assert mij.json() == {
+        "id": adviseur.id,
+        "email": adviseur.email,
+        "naam": adviseur.naam,
+        "rol": "beheerder",
+    }
     assert "wachtwoord" not in mij.text
     assert db.scalars(select(Logboek.actie)).all() == ["login"]
 

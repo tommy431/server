@@ -1,4 +1,20 @@
-export type Adviseur = { id: number; email: string; naam: string };
+export type Adviseur = { id: number; email: string; naam: string; rol: "adviseur" | "beheerder" };
+
+export type Voorstel = {
+  id: number;
+  soort: "modelallocatie" | "aannames";
+  sleutel: string | null;
+  inhoud: Record<string, unknown>;
+  oud: Record<string, unknown> | null;
+  status: "open" | "doorgevoerd" | "afgewezen";
+  voorgesteld_door: string;
+  voorgesteld_door_id: number;
+  voorgesteld_op: string;
+  beoordeeld_door: string | null;
+  beoordeeld_op: string | null;
+  reden: string | null;
+  resultaat_id: number | null;
+};
 
 export type Profiel = {
   id: number;

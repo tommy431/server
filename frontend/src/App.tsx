@@ -49,6 +49,7 @@ export default function App() {
         </nav>
         <span className="wie">
           {adviseur.naam}
+          {adviseur.rol === "beheerder" && <span className="label">Beheerder</span>}
           <button className="tekstknop" onClick={uitloggen}>
             Uitloggen
           </button>
@@ -59,8 +60,8 @@ export default function App() {
           <Route path="/klanten" element={<Klanten />} />
           <Route path="/klanten/:id" element={<KlantDetail />} />
           <Route path="/klanten/:id/portefeuille" element={<Portefeuille />} />
-          <Route path="/modelallocaties" element={<Modelallocaties />} />
-          <Route path="/aannames" element={<Aannames />} />
+          <Route path="/modelallocaties" element={<Modelallocaties adviseur={adviseur} />} />
+          <Route path="/aannames" element={<Aannames adviseur={adviseur} />} />
           <Route path="/data" element={<Data />} />
           <Route path="*" element={<Navigate to="/klanten" replace />} />
         </Routes>

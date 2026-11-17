@@ -43,6 +43,8 @@ class Adviseur(Basis):
     email: Mapped[str] = mapped_column(String(254), unique=True)
     naam: Mapped[str] = mapped_column(String(200))
     wachtwoord_hash: Mapped[str] = mapped_column(String(200))
+    # "adviseur" of "beheerder". Alleen een beheerder wijzigt modelallocaties, aannames en fondsen.
+    rol: Mapped[str] = mapped_column(String(20), default="adviseur", server_default="adviseur")
     actief: Mapped[bool] = mapped_column(Boolean, default=True)
     aangemaakt_op: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -295,3 +297,28 @@ class Rapport(Basis):
     status: Mapped[str] = mapped_column(String(20), default="concept", server_default="concept")
     concept_redenen: Mapped[list | None] = mapped_column(JSON)
     verwijderd_op: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Wijzigingsvoorstel(Basis):
+    """Een voorgestelde wijziging van instellingen die voor alle adviseurs gelden.
+
+    Met het vier-ogenprincipe wordt de wijziging pas doorgevoerd na goedkeuring door een tweede
+    beheerder. Voorstellen worden niet verwijderd, zodat later te zien is wie wat heeft besloten.
+    """
+
+    __tablename__ = "wijzigingsvoorstel"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    soort: Mapped[str] = mapped_column(String(30), index=True)  # "modelallocatie" of "aannames"
+    sleutel: Mapped[str | None] = mapped_column(String(50))  # bijv. de code van het risicoprofiel
+    inhoud: Mapped[dict] = mapped_column(JSON)
+    oud: Mapped[dict | None] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(20), index=True)  # open, doorgevoerd, afgewezen
+    voorgesteld_door: Mapped[int] = mapped_column(ForeignKey("adviseur.id"))
+    voorgesteld_op: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    beoordeeld_door: Mapped[int | None] = mapped_column(ForeignKey("adviseur.id"))
+    beoordeeld_op: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reden: Mapped[str | None] = mapped_column(String(1000))
+    resultaat_id: Mapped[int | None] = mapped_column(Integer)

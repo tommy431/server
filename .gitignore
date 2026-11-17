@@ -6,3 +6,6 @@ __pycache__/
 .ruff_cache/
 node_modules/
 dist/
+backend/e2e-test.db
+frontend/test-results/
+frontend/playwright-report/

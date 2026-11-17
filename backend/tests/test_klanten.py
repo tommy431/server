@@ -356,7 +356,8 @@ def regels(**wijzig):
 def test_modelallocatie_wijzigen_met_logboek(ingelogd, db, adviseur):
     nieuw = regels(aandelen=[55, 45, 65], obligaties=[33, 20, 45])
     r = ingelogd.put("/risicoprofielen/neutraal/allocatie", json=nieuw)
-    assert r.status_code == 200 and r.json()["allocatie"][0]["streef"] == 55
+    assert r.status_code == 200 and r.json()["status"] == "doorgevoerd"
+    assert r.json()["oud"]["regels"]["aandelen"] == [50, 40, 60]
     opgehaald = ingelogd.get("/risicoprofielen").json()
     assert opgehaald[2]["allocatie"][1] == {
         "categorie": "obligaties",

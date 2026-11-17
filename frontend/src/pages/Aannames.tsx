@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 
-import { AannamesUit, api, datum, naam } from "../api";
+import { AannamesUit, Adviseur, Voorstel, api, datum, naam } from "../api";
 import { Fouten, meldingenVan } from "../Fouten";
+import { Voorstellen } from "../Voorstellen";
 
 const CATEGORIEEN = ["aandelen", "obligaties", "vastgoed", "grondstoffen", "liquiditeiten"];
 type Invoer = { rendement: string; volatiliteit: string };
@@ -9,7 +10,10 @@ const alsTekst = (f: number) => String(Math.round(f * 10000) / 100).replace(".",
 const alsFractie = (t: string) => Number(t.replace(",", ".")) / 100;
 const correlatieTekst = (f: number) => String(f).replace(".", ",");
 
-export default function Aannames() {
+export default function Aannames({ adviseur }: { adviseur: Adviseur }) {
+  const magWijzigen = adviseur.rol === "beheerder";
+  const [verversing, setVersversing] = useState(0);
+  const [melding, setMelding] = useState<string | null>(null);
   const [geschiedenis, setGeschiedenis] = useState<AannamesUit[]>([]);
   const [waarden, setWaarden] = useState<Record<string, Invoer>>({});
   const [correlaties, setCorrelaties] = useState<Record<string, Record<string, string>>>({});
@@ -47,7 +51,7 @@ export default function Aannames() {
         if (g[0]) neemOver(g[0]);
       })
       .catch((f) => setFouten(meldingenVan(f)));
-  }, []);
+  }, [verversing]);
 
   function zetCorrelatie(r: string, k: string, tekst: string) {
     setGelukt(false);
@@ -57,7 +61,7 @@ export default function Aannames() {
   async function bewaar() {
     setFouten([]);
     try {
-      const nieuw = await api<AannamesUit>("/aannames", {
+      const voorstel = await api<Voorstel>("/aannames", {
         methode: "POST",
         body: {
           bron,
@@ -75,9 +79,13 @@ export default function Aannames() {
           ),
         },
       });
-      setGeschiedenis([nieuw, ...geschiedenis]);
-      neemOver(nieuw);
+      setMelding(
+        voorstel.status === "doorgevoerd"
+          ? "Nieuwe versie vastgelegd."
+          : "Voorstel ingediend; de aannames gelden pas nadat een tweede beheerder het heeft goedgekeurd.",
+      );
       setGelukt(true);
+      setVersversing((v) => v + 1);
     } catch (f) {
       setFouten(meldingenVan(f));
     }
@@ -93,6 +101,17 @@ export default function Aannames() {
         Deze aannames bepalen de scenario's bij elke portefeuille. Een wijziging wordt een nieuwe versie, geldt voor alle
         adviseurs en wordt vastgelegd in het logboek. Al vastgelegde portefeuilles houden de aannames van dat moment.
       </p>
+      <p className="zacht">
+        {magWijzigen
+          ? "Een wijziging wordt van kracht nadat een tweede beheerder haar heeft goedgekeurd."
+          : "Alleen een beheerder kan de aannames wijzigen."}
+      </p>
+      <Voorstellen
+        soort="aannames"
+        adviseur={adviseur}
+        verversing={verversing}
+        naWijziging={() => setVersversing((v) => v + 1)}
+      />
       {huidig.bron.startsWith("Voorbeeldwaarden") && (
         <div className="melding let-op">
           De huidige aannames zijn voorbeeldwaarden zonder gepubliceerde bron. Vervang ze door aannames uit een erkende
@@ -102,6 +121,7 @@ export default function Aannames() {
 
       <section className="kaart">
         <h2>Per beleggingscategorie</h2>
+        <fieldset className="kaal" disabled={!magWijzigen}>
         <table className="compact">
           <thead>
             <tr>
@@ -214,8 +234,9 @@ export default function Aannames() {
           <textarea value={bron} maxLength={500} onChange={(e) => setBron(e.target.value)} />
         </label>
         <Fouten meldingen={fouten} />
-        {gelukt && <div className="melding goed">Nieuwe versie vastgelegd.</div>}
-        <button onClick={bewaar}>Nieuwe versie vastleggen</button>
+        {gelukt && melding && <div className="melding goed">{melding}</div>}
+        {magWijzigen && <button onClick={bewaar}>Nieuwe versie voorstellen</button>}
+        </fieldset>
       </section>
 
       <section className="kaart">

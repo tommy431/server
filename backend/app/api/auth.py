@@ -31,6 +31,7 @@ class AdviseurUit(BaseModel):
     id: int
     email: str
     naam: str
+    rol: str
 
 
 @router.post("/login", response_model=TokenAntwoord)
