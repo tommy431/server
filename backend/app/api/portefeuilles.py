@@ -1,12 +1,12 @@
 from dataclasses import asdict
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
-from app.analyse import analyseer, naar_euro
+from app.analyse import analyseer, jaren_terug, naar_euro, rente_index
 from app.api.aannames import als_aannames, huidige
 from app.api.afhankelijkheden import Db, Ingelogd
 from app.api.klanten import _eigen_klant
@@ -23,6 +23,7 @@ from app.models import (
     Modelallocatie,
     Portefeuille,
     Positie,
+    Rente,
     Risicoprofiel,
     Wisselkoers,
 )
@@ -52,7 +53,10 @@ BENCHMARK_FONDSEN = {
     "grondstoffen": "DE000A0H0728",
     "liquiditeiten": "LU0290358497",
 }
-# Het rendement van dit geldmarktfonds geldt als risicovrij rendement voor de Sharpe-ratio.
+# Risicovrij rendement voor de Sharpe-ratio: de kortlopende eurorente van de ECB. Is die niet
+# opgehaald, dan het rendement van dit geldmarktfonds (na kosten, dus iets lager).
+RISICOVRIJ_RENTE = "ECB-RENTE"
+RISICOVRIJ_RENTE_NAAM = "de kortlopende eurorente van de ECB (€STR, vóór oktober 2019 EONIA)"
 RISICOVRIJ_FONDS = "LU0290358497"
 
 
@@ -74,6 +78,11 @@ class VoorstelIn(BaseModel):
 class PortefeuilleIn(BaseModel):
     posities: list[PositieIn]
     uitsluitingen: list[UitsluitingIn] = []
+
+
+class AnalyseIn(PortefeuilleIn):
+    # Korte fondshistorie aanvullen met een vergelijkbaar fonds (gesimuleerd, en zo gemarkeerd).
+    verlengen: bool = False
 
 
 class ScenarioIn(PortefeuilleIn):
@@ -220,7 +229,37 @@ class _Context:
             klant_uitsluitingen=tuple(self.profiel.uitsluitingen),
         )
 
-    def analyseer(self, db: Db, posities: dict[str, int]) -> AnalyseUit:
+    def vervangers(self, db: Db, posities: dict[str, int]) -> dict[str, str]:
+        """Per fonds het actieve fonds met dezelfde categorie, regio en sector en de langste
+        koershistorie, als die langer is dan die van het fonds zelf."""
+        eerste = {
+            iid: d
+            for iid, d in db.execute(
+                select(Koers.instrument_id, func.min(Koers.datum)).group_by(Koers.instrument_id)
+            ).all()
+        }
+        start = {i.isin: eerste.get(i.id, date.max) for i in self.instrumenten.values()}
+        # Alleen fondsen die de langste analyseperiode (10 jaar) niet zelf afdekken.
+        grens = jaren_terug(date.today(), 10)
+        uit = {}
+        for isin in posities:
+            if start[isin] <= grens:
+                continue
+            eigen = self.instrumenten[isin]
+            kandidaten = [
+                i
+                for i in self.instrumenten.values()
+                if i.isin != isin
+                and i.actief
+                and (i.categorie, i.regio, i.sector) == (eigen.categorie, eigen.regio, eigen.sector)
+            ]
+            if kandidaten:
+                beste = min(kandidaten, key=lambda i: (start[i.isin], i.isin))
+                if start[beste.isin] < start[isin]:
+                    uit[isin] = beste.isin
+        return uit
+
+    def analyseer(self, db: Db, posities: dict[str, int], verlengen: bool = False) -> AnalyseUit:
         """Historische analyse van de posities tegen de benchmark van het risicoprofiel."""
         benchmark = {
             BENCHMARK_FONDSEN[c]: b.streef / 100
@@ -229,8 +268,18 @@ class _Context:
         }
         if abs(sum(benchmark.values()) - 1) > 1e-9:
             benchmark = {}  # een onvolledige benchmark is geen eerlijke vergelijking
-        risicovrij = RISICOVRIJ_FONDS if RISICOVRIJ_FONDS in self.instrumenten else None
-        nodig = set(posities) | set(benchmark) | ({risicovrij} if risicovrij else set())
+        rente = dict(db.execute(select(Rente.datum, Rente.waarde)).all())
+        if rente:
+            risicovrij, risicovrij_naam = RISICOVRIJ_RENTE, RISICOVRIJ_RENTE_NAAM
+        elif RISICOVRIJ_FONDS in self.instrumenten:
+            risicovrij = RISICOVRIJ_FONDS
+            risicovrij_naam = f"het geldmarktfonds {self.instrumenten[RISICOVRIJ_FONDS].naam}"
+        else:
+            risicovrij = risicovrij_naam = None
+        vervangers = self.vervangers(db, posities) if verlengen else {}
+        nodig = set(posities) | set(benchmark) | set(vervangers.values())
+        if risicovrij == RISICOVRIJ_FONDS:
+            nodig.add(risicovrij)
 
         wissel: dict[str, dict] = {}
         reeksen = {}
@@ -256,12 +305,15 @@ class _Context:
                 reeksen[isin] = naar_euro(reeks, valuta, wissel.get(valuta.upper()))
             except ValueError:
                 reeksen[isin] = {}
+        if risicovrij == RISICOVRIJ_RENTE:
+            reeksen[RISICOVRIJ_RENTE] = rente_index(rente)
         uitkomst = analyseer(
             {isin: gewicht / 10_000 for isin, gewicht in posities.items()},
             reeksen,
             {isin: i.naam for isin, i in self.instrumenten.items()},
             benchmark=benchmark or None,
             risicovrij=risicovrij,
+            vervangers=vervangers,
         )
         per_fonds = {v: k for k, v in BENCHMARK_FONDSEN.items()}
         return AnalyseUit(
@@ -274,7 +326,7 @@ class _Context:
                 )
                 for isin, gewicht in benchmark.items()
             ],
-            risicovrij=self.instrumenten[risicovrij].naam if risicovrij else None,
+            risicovrij=risicovrij_naam,
         )
 
     def scenario(
@@ -365,7 +417,7 @@ def doorrekenen(klant_id: int, invoer: PortefeuilleIn, db: Db, adviseur: Ingelog
 
 
 @router.post("/klanten/{klant_id}/portefeuille/analyse", response_model=AnalyseUit)
-def analyse(klant_id: int, invoer: PortefeuilleIn, db: Db, adviseur: Ingelogd) -> AnalyseUit:
+def analyse(klant_id: int, invoer: AnalyseIn, db: Db, adviseur: Ingelogd) -> AnalyseUit:
     """Historische analyse van een portefeuille. Slaat niets op."""
     ctx = _Context(db, adviseur, klant_id)
     uitsluitingen = ctx.uitsluitingen(invoer.uitsluitingen)
@@ -374,7 +426,7 @@ def analyse(klant_id: int, invoer: PortefeuilleIn, db: Db, adviseur: Ingelogd) -
     blokkerend = [b.melding for b in d.fouten if b.code != "uitgesloten"]
     if blokkerend:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, blokkerend)
-    return ctx.analyseer(db, posities)
+    return ctx.analyseer(db, posities, invoer.verlengen)
 
 
 @router.post("/klanten/{klant_id}/portefeuille/scenario", response_model=ScenarioUit)

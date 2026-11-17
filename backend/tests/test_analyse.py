@@ -10,6 +10,8 @@ from app.analyse import (
     jaren_terug,
     kengetallen,
     naar_euro,
+    rente_index,
+    verleng,
     waardeverloop,
 )
 
@@ -346,3 +348,51 @@ def test_als_dict_is_json_geschikt():
     assert terug["peildatum"] == "2026-11-13"
     assert terug["perioden"][0]["portefeuille"]["max_daling_top"][:2] == "20"
     assert terug["waardeverloop"][0] == ["2015-01-01", 100.0, None]
+
+
+def test_rente_index_act_360_met_weekend():
+    # Vrijdag 3,6% geldt drie dagen: 100 × (1 + 0,036 × 3/360) = 100,03. Maandag 1,8% één dag.
+    index = rente_index({D(2024, 1, 5): 3.6, D(2024, 1, 8): 1.8, D(2024, 1, 9): 0.0})
+    assert index == pytest.approx(
+        {D(2024, 1, 5): 100.0, D(2024, 1, 8): 100.03, D(2024, 1, 9): 100.03 * 1.00005}
+    )
+    assert rente_index({}) == {}
+    # Negatieve rente laat de index dalen.
+    assert rente_index({D(2020, 1, 1): -0.5, D(2020, 1, 2): -0.5})[D(2020, 1, 2)] < 100
+
+
+def test_verleng_sluit_aan_en_neemt_het_rendement_van_de_vervanger():
+    eigen = {D(2024, 1, 3): 50.0, D(2024, 1, 4): 55.0}
+    vervanger = {
+        D(2024, 1, 1): 100.0,
+        D(2024, 1, 2): 110.0,
+        D(2024, 1, 3): 121.0,
+        D(2024, 1, 4): 1.0,
+    }
+    uit = verleng(eigen, vervanger)
+    assert uit[D(2024, 1, 3)] == 50.0 and uit[D(2024, 1, 4)] == 55.0  # eigen koersen ongemoeid
+    assert uit[D(2024, 1, 2)] == pytest.approx(50 / 1.1)  # rendement 2→3 januari is +10%
+    assert uit[D(2024, 1, 1)] == pytest.approx(50 / 1.21)
+    assert verleng(eigen, {D(2024, 2, 1): 1.0}) == eigen  # vervanger begint later: niets te doen
+
+
+def test_analyse_met_vervanger_markeert_gesimuleerde_perioden():
+    reeksen = {"AAND": groei(0.08, D(2010, 1, 1)), "NIEUW": groei(0.03, D(2022, 6, 1))}
+    a = analyseer({"AAND": 0.5, "NIEUW": 0.5}, reeksen, NAMEN, vervangers={"NIEUW": "AAND"})
+    assert all(p.beschikbaar for p in a.perioden)
+    assert [(p.code, p.gesimuleerd) for p in a.perioden] == [
+        ("1j", False),
+        ("3j", False),
+        ("5j", True),
+        ("10j", True),
+        ("start", True),
+    ]
+    nieuw = next(h for h in a.instrumenten if h.isin == "NIEUW")
+    assert (nieuw.vervanger, nieuw.eigen_koersen_vanaf, nieuw.eerste_koers) == (
+        "Aandelenfonds",
+        D(2022, 6, 1),
+        D(2022, 6, 1),
+    )
+    # Volledig gesimuleerd verleden: 8% per jaar vóór juni 2022, dus ook voor de mix.
+    tien = next(p for p in a.perioden if p.code == "10j").portefeuille
+    assert 0.03 < tien.rendement_per_jaar < 0.08

@@ -11,6 +11,7 @@ from app.data.bronnen import (
     Koerspunt,
     Koersreeks,
     YahooBron,
+    haal_kortlopende_rente,
     lees_koersen_csv,
 )
 from app.data.kwaliteit import controleer_reeks
@@ -340,3 +341,28 @@ def test_wisselkoersen_voor_vreemde_valuta_en_pence(db, universum):
     assert {w.valuta for w in db.scalars(select(Wisselkoers))} == {"GBP", "USD"}
     ververs_alles(db, bron, ecb_bron, VANDAAG)  # opnieuw verversen dupliceert niets
     assert len(db.scalars(select(Wisselkoers)).all()) == 2
+
+
+def test_kortlopende_rente_eonia_tot_oktober_2019_daarna_estr():
+    def antwoord(verzoek):
+        if "EON/" in str(verzoek.url):
+            assert verzoek.url.params["endPeriod"] == "2019-09-30"
+            return httpx.Response(
+                200, text="TIME_PERIOD,OBS_VALUE\n2019-09-27,-0.45\n2019-09-30,-0.46\n"
+            )
+        return httpx.Response(
+            200, text="TIME_PERIOD,OBS_VALUE\n2019-10-01,-0.549\n2026-11-13,2.437\n"
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(antwoord))
+    assert haal_kortlopende_rente(client, date(2005, 1, 1)) == [
+        (date(2019, 9, 27), -0.45, "EONIA"),
+        (date(2019, 9, 30), -0.46, "EONIA"),
+        (date(2019, 10, 1), -0.549, "ESTR"),
+        (date(2026, 11, 13), 2.437, "ESTR"),
+    ]
+    leeg = httpx.Client(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, text="TIME_PERIOD,OBS_VALUE\n"))
+    )
+    with pytest.raises(BronFout):
+        haal_kortlopende_rente(leeg, date(2020, 1, 1))

@@ -46,6 +46,8 @@ class Periode:
     portefeuille: Kengetallen | None = None
     benchmark: Kengetallen | None = None
     risicovrij_per_jaar: float | None = None
+    # True als de periode deels rekent met een vervanger voor een fonds met korte historie.
+    gesimuleerd: bool = False
 
 
 @dataclass(frozen=True)
@@ -63,6 +65,9 @@ class InstrumentHistorie:
     laatste_koers: date
     bruikbaar_vanaf: date
     ingekort: bool
+    # Vóór `eigen_koersen_vanaf` is gerekend met het rendement van deze vervanger.
+    vervanger: str | None = None
+    eigen_koersen_vanaf: date | None = None
 
 
 @dataclass(frozen=True)
@@ -201,12 +206,16 @@ def analyseer(
     namen: dict[str, str],
     benchmark: dict[str, float] | None = None,
     risicovrij: str | None = None,
+    vervangers: dict[str, str] | None = None,
 ) -> Analyse:
     """Analyseert een portefeuille over 1, 3, 5 en 10 jaar en sinds start.
 
     `gewichten` en `benchmark` zijn ISIN → gewicht en tellen elk op tot 1. `reeksen` bevat per
-    ISIN de gecorrigeerde koersen in euro; `risicovrij` is de ISIN van het geldmarktinstrument
-    waarmee de Sharpe-ratio wordt berekend.
+    ISIN de gecorrigeerde koersen in euro; `risicovrij` is de sleutel in `reeksen` van de
+    index waarmee het risicovrije rendement voor de Sharpe-ratio wordt berekend.
+
+    `vervangers` (ISIN → ISIN) verlengt de historie van een fonds met het rendement van een
+    vergelijkbaar fonds dat langer bestaat. Zulke perioden worden als gesimuleerd gemarkeerd.
     """
     waarschuwingen: list[str] = []
     ontbreekt = [namen.get(i, i) for i in gewichten if not reeksen.get(i)]
@@ -220,11 +229,24 @@ def analyseer(
 
     bruikbaar: dict[str, Reeks] = {}
     historie = []
-    nodig = set(gewichten) | set(benchmark or {}) | ({risicovrij} if risicovrij else set())
-    for isin in nodig:
+    vervangers = vervangers or {}
+    nodig = (
+        set(gewichten)
+        | set(benchmark or {})
+        | ({risicovrij} if risicovrij else set())
+        | {vervangers[i] for i in gewichten if i in vervangers}
+    )
+    # Eerst de reeksen zonder vervanger, zodat elke vervanger klaarstaat voor wie hem nodig heeft.
+    for isin in sorted(nodig, key=lambda i: (i in vervangers, i)):
         if not reeksen.get(isin):
             continue
         deel, ingekort = bruikbaar_deel(reeksen[isin])
+        eigen_vanaf = min(deel)
+        vervanger = vervangers.get(isin) if isin in gewichten else None
+        if vervanger in bruikbaar and min(bruikbaar[vervanger]) < eigen_vanaf:
+            deel = verleng(deel, bruikbaar[vervanger])
+        else:
+            vervanger = None
         bruikbaar[isin] = deel
         if isin in gewichten:
             historie.append(
@@ -235,8 +257,16 @@ def analyseer(
                     laatste_koers=max(reeksen[isin]),
                     bruikbaar_vanaf=min(deel),
                     ingekort=ingekort,
+                    vervanger=namen.get(vervanger, vervanger) if vervanger else None,
+                    eigen_koersen_vanaf=eigen_vanaf if vervanger else None,
                 )
             )
+            if vervanger:
+                waarschuwingen.append(
+                    f"{namen.get(isin, isin)}: vóór {eigen_vanaf} is gerekend met het rendement "
+                    f"van {namen.get(vervanger, vervanger)}. Dat deel is gesimuleerd, geen "
+                    "werkelijk behaald resultaat"
+                )
             if ingekort:
                 waarschuwingen.append(
                     f"{namen.get(isin, isin)}: koersen van vóór {min(deel)} zijn niet gebruikt "
@@ -283,6 +313,9 @@ def analyseer(
             portefeuille=kengetallen(verloop, rf),
             benchmark=kengetallen(verloop_bm, rf) if verloop_bm else None,
             risicovrij_per_jaar=rf,
+            gesimuleerd=any(
+                h.eigen_koersen_vanaf is not None and h.eigen_koersen_vanaf > van for h in historie
+            ),
         )
         return periode, verloop, verloop_bm
 
@@ -342,6 +375,34 @@ def analyseer(
         punt for punt in per_maand.values() if punt[0] != verloop[0][0]
     ]
     return Analyse(peildatum, perioden, kalenderjaren, historie, maandwaarden, waarschuwingen)
+
+
+def verleng(reeks: Reeks, vervanger: Reeks) -> Reeks:
+    """Plakt vóór de eerste koers van `reeks` de koersen van `vervanger`, geschaald zodat ze op
+    die eerste dag aansluiten. Het rendement vóór die dag is dus dat van de vervanger."""
+    begin = min(reeks)
+    dagen = sorted(vervanger)
+    aansluiting = _koers_op(vervanger, dagen, begin)
+    if aansluiting is None:
+        return reeks
+    factor = reeks[begin] / aansluiting
+    uit = {d: k * factor for d, k in vervanger.items() if d < begin}
+    uit.update(reeks)
+    return uit
+
+
+def rente_index(rente: dict[date, float]) -> Reeks:
+    """Maakt van dagrentes (procent per jaar, act/360) een index die begint op 100.
+
+    Elke rente geldt van haar datum tot de volgende publicatiedatum, zoals bij €STR en EONIA.
+    """
+    dagen = sorted(rente)
+    if not dagen:
+        return {}
+    index = {dagen[0]: 100.0}
+    for vorige, dag in pairwise(dagen):
+        index[dag] = index[vorige] * (1 + rente[vorige] / 100 * (dag - vorige).days / 360)
+    return index
 
 
 def naar_euro(reeks: Reeks, valuta: str, wisselkoersen: Reeks | None) -> Reeks:

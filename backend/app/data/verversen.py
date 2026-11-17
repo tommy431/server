@@ -6,9 +6,9 @@ from datetime import UTC, date, datetime
 from sqlalchemy import delete, insert, select
 from sqlalchemy.orm import Session
 
-from app.data.bronnen import BronFout, EcbBron, Koersbron, Koerspunt
+from app.data.bronnen import BronFout, EcbBron, Koersbron, Koerspunt, haal_kortlopende_rente
 from app.data.kwaliteit import Bevinding, controleer_reeks
-from app.models import Instrument, Koers, Wisselkoers
+from app.models import Instrument, Koers, Rente, Wisselkoers
 
 BEGIN_HISTORIE = date(2005, 1, 1)
 
@@ -95,6 +95,27 @@ def ververs_wisselkoersen(db: Session, ecb: EcbBron) -> Resultaat:
     return resultaat
 
 
+def ververs_rente(db: Session, ecb: EcbBron) -> Resultaat:
+    resultaat = Resultaat("rente")
+    try:
+        waarden = haal_kortlopende_rente(ecb._client, BEGIN_HISTORIE)
+    except BronFout as fout:
+        resultaat.fout = str(fout)
+        return resultaat
+    nu = datetime.now(UTC)
+    db.execute(delete(Rente))
+    db.execute(
+        insert(Rente),
+        [
+            {"datum": d, "waarde": w, "reeks": r, "bron": "ecb", "opgehaald_op": nu}
+            for d, w, r in waarden
+        ],
+    )
+    db.commit()
+    resultaat.opgeslagen = len(waarden)
+    return resultaat
+
+
 def ververs_alles(
     db: Session, bron: Koersbron, ecb: EcbBron, vandaag: date | None = None
 ) -> list[Resultaat]:
@@ -105,4 +126,6 @@ def ververs_alles(
     ).all()
     resultaten = [ververs_instrument(db, i, bron, vandaag) for i in instrumenten]
     resultaten.append(ververs_wisselkoersen(db, ecb))
+    if hasattr(ecb, "_client"):
+        resultaten.append(ververs_rente(db, ecb))
     return resultaten

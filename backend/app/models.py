@@ -246,3 +246,15 @@ class Aannameset(Basis):
     categorieen: Mapped[dict] = mapped_column(JSON)
     correlaties: Mapped[dict] = mapped_column(JSON)
     inflatie: Mapped[float] = mapped_column(Float)
+
+
+class Rente(Basis):
+    """Kortlopende eurorente van de ECB, in procenten per jaar (act/360)."""
+
+    __tablename__ = "rente"
+
+    datum: Mapped[date] = mapped_column(Date, primary_key=True)
+    waarde: Mapped[float] = mapped_column(Float)
+    reeks: Mapped[str] = mapped_column(String(10))  # "ESTR" of "EONIA"
+    bron: Mapped[str] = mapped_column(String(30))
+    opgehaald_op: Mapped[datetime] = mapped_column(DateTime(timezone=True))

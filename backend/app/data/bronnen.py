@@ -127,6 +127,46 @@ class EcbBron:
         return uit
 
 
+ESTR_START = date(2019, 10, 1)
+
+
+def _ecb_reeks(
+    client: httpx.Client, pad: str, vanaf: date, tot: date | None = None
+) -> dict[date, float]:
+    params = {"format": "csvdata", "startPeriod": vanaf.isoformat()}
+    if tot:
+        params["endPeriod"] = tot.isoformat()
+    try:
+        antwoord = client.get(f"https://data-api.ecb.europa.eu/service/data/{pad}", params=params)
+        antwoord.raise_for_status()
+    except httpx.HTTPError as fout:
+        raise BronFout(f"ECB niet bereikbaar ({fout})") from fout
+    uit = {}
+    for rij in csv.DictReader(io.StringIO(antwoord.text)):
+        if rij.get("OBS_VALUE"):
+            try:
+                uit[date.fromisoformat(rij["TIME_PERIOD"])] = float(rij["OBS_VALUE"])
+            except (KeyError, ValueError) as fout:
+                raise BronFout(f"ECB: onverwachte regel {rij}") from fout
+    return uit
+
+
+def haal_kortlopende_rente(client: httpx.Client, vanaf: date) -> list[tuple[date, float, str]]:
+    """Dagelijkse kortlopende eurorente van de ECB: EONIA tot oktober 2019, daarna €STR.
+
+    De ECB publiceert €STR sinds 1 oktober 2019 en heeft EONIA op die datum vervangen.
+    """
+    uit: list[tuple[date, float, str]] = []
+    if vanaf < ESTR_START:
+        eonia = _ecb_reeks(client, "EON/D.EONIA_TO.RATE", vanaf, ESTR_START - timedelta(days=1))
+        uit += [(d, w, "EONIA") for d, w in sorted(eonia.items())]
+    estr = _ecb_reeks(client, "EST/B.EU000A2X2A25.WT", max(vanaf, ESTR_START))
+    if not estr:
+        raise BronFout("ECB: geen €STR-waarden ontvangen")
+    uit += [(d, w, "ESTR") for d, w in sorted(estr.items())]
+    return uit
+
+
 def lees_koersen_csv(tekst: str) -> list[Koerspunt]:
     """Leest een CSV met kolommen datum (JJJJ-MM-DD), slot en optioneel slot_gecorrigeerd."""
     lezer = csv.DictReader(io.StringIO(tekst))

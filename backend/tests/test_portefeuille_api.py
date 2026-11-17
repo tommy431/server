@@ -1,3 +1,4 @@
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -324,7 +325,10 @@ def test_analyse_met_benchmark_en_risicovrij(ingelogd, klant_id, db):
         ("grondstoffen", 2),
         ("liquiditeiten", 5),
     ]
-    assert uit["risicovrij"] == "Xtrackers II EUR Overnight Rate Swap UCITS ETF 1C"
+    # Zonder opgehaalde ECB-rente valt de analyse terug op het geldmarktfonds.
+    assert (
+        uit["risicovrij"] == "het geldmarktfonds Xtrackers II EUR Overnight Rate Swap UCITS ETF 1C"
+    )
     a = uit["analyse"]
     assert a["waarschuwingen"] == [] and len(a["instrumenten"]) == 8
     assert [p["code"] for p in a["perioden"]] == ["1j", "3j", "5j", "10j", "start"]
@@ -402,3 +406,59 @@ def test_analyse_alleen_voor_eigen_klant(ingelogd, client, klant_id, db):
         client.post(pad(klant_id, "analyse"), json=body, headers={"Authorization": ""}).status_code
         == 401
     )
+
+
+def test_ecb_rente_heeft_voorrang_als_risicovrij_rendement(ingelogd, klant_id, db):
+    from datetime import UTC, datetime, timedelta
+
+    from app.models import Rente
+
+    v = ingelogd.post(pad(klant_id, "voorstel"), json={}).json()
+    vul_koersen(db, per_jaar=0.05)
+    eind = date.today()
+    begin = eind.replace(year=eind.year - 12)
+    db.add_all(
+        Rente(
+            datum=begin + timedelta(days=i),
+            waarde=1.0,
+            reeks="ESTR",
+            bron="test",
+            opgehaald_op=datetime.now(UTC),
+        )
+        for i in range((eind - begin).days + 1)
+    )
+    db.commit()
+    uit = ingelogd.post(pad(klant_id, "analyse"), json={"posities": v["posities"]}).json()
+    assert uit["risicovrij"].startswith("de kortlopende eurorente van de ECB")
+    # 1% per jaar act/360, dagelijks samengesteld: (1 + 0,01/360)^365,25 − 1 ≈ 1,0197%.
+    vijf = next(p for p in uit["analyse"]["perioden"] if p["code"] == "5j")
+    assert vijf["risicovrij_per_jaar"] == pytest.approx((1 + 0.01 / 360) ** 365.25 - 1, abs=1e-5)
+
+
+def test_verlengen_met_vervanger_is_gemarkeerd_en_staat_standaard_uit(ingelogd, klant_id, db):
+    v = ingelogd.post(pad(klant_id, "voorstel"), json={}).json()
+    vul_koersen(db)
+    vandaag = date.today()
+    vul_koersen(db, begin=vandaag.replace(year=vandaag.year - 4), isins={KLEIN})
+    body = {"posities": v["posities"]}
+
+    zonder = ingelogd.post(pad(klant_id, "analyse"), json=body).json()["analyse"]
+    tien = next(p for p in zonder["perioden"] if p["code"] == "10j")
+    assert not tien["beschikbaar"] and "Small Cap" in tien["reden"]
+
+    met = ingelogd.post(pad(klant_id, "analyse"), json=body | {"verlengen": True}).json()["analyse"]
+    tien = next(p for p in met["perioden"] if p["code"] == "10j")
+    assert tien["beschikbaar"] and tien["gesimuleerd"]
+    assert not next(p for p in met["perioden"] if p["code"] == "3j")["gesimuleerd"]
+    klein = next(h for h in met["instrumenten"] if h["isin"] == KLEIN)
+    # Vervanger: zelfde categorie, regio en sector, met de langste historie.
+    wereldfondsen = {
+        i.naam
+        for i in db.scalars(select(Instrument))
+        if (i.categorie, i.regio, i.sector) == ("aandelen", "wereld", "breed") and i.isin != KLEIN
+    }
+    assert klein["vervanger"] in wereldfondsen
+    assert klein["eigen_koersen_vanaf"] == str(vandaag.replace(year=vandaag.year - 4))
+    assert any("gesimuleerd, geen werkelijk behaald resultaat" in w for w in met["waarschuwingen"])
+    # Fondsen met tien jaar eigen historie krijgen geen vervanger.
+    assert [h["isin"] for h in met["instrumenten"] if h["vervanger"]] == [KLEIN]

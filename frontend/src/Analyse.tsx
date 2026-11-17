@@ -131,7 +131,7 @@ export function Analyse({ uitkomst }: { uitkomst: AnalyseUitkomst }) {
           is het rendement niet naar jaarbasis omgerekend.
         </li>
         {uitkomst.risicovrij && (
-          <li>De Sharpe-ratio gebruikt het rendement van {uitkomst.risicovrij} als risicovrij rendement.</li>
+          <li>De Sharpe-ratio gebruikt {uitkomst.risicovrij} als risicovrij rendement.</li>
         )}
         {metBenchmark && (
           <li>
