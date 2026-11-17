@@ -9,6 +9,7 @@ export type Profiel = {
   inleg_eur: number;
   storting_per_maand_eur: number;
   doelvermogen_eur: number | null;
+  doel_in_koopkracht: boolean;
   antwoorden: Record<string, number>;
   score_bereidheid: number;
   score_capaciteit: number;
@@ -29,6 +30,8 @@ export type Klant = {
   email: string | null;
   geboortedatum: string | null;
   gearchiveerd: boolean;
+  geanonimiseerd_op: string | null;
+  bewaren_tot: string | null;
   aangemaakt_op: string;
   huidig_profiel: Profiel | null;
 };
@@ -76,6 +79,7 @@ export type Doorrekening = {
   aantal_instrumenten: number;
   kosten_pct: number;
   kosten_per_positie: Record<string, number>;
+  valutarisico?: Record<string, number>;
   kosten_eur_per_jaar: number;
   bevindingen: Bevinding[];
 };
@@ -236,13 +240,35 @@ export type AnalysePeriode = {
   portefeuille: Kengetallen | null;
   benchmark: Kengetallen | null;
   risicovrij_per_jaar: number | null;
+  gesimuleerd?: boolean;
+};
+export type Stressperiode = {
+  code: string;
+  naam: string;
+  van: string;
+  tot: string;
+  beschikbaar: boolean;
+  reden: string | null;
+  rendement: number | null;
+  max_daling: number | null;
+  benchmark_rendement: number | null;
+  gesimuleerd: boolean;
 };
 export type AnalyseUitkomst = {
   analyse: {
     peildatum: string | null;
     perioden: AnalysePeriode[];
     kalenderjaren: { jaar: number; portefeuille: number; benchmark: number | null }[];
-    instrumenten: { isin: string; naam: string; eerste_koers: string; bruikbaar_vanaf: string; ingekort: boolean }[];
+    instrumenten: {
+      isin: string;
+      naam: string;
+      eerste_koers: string;
+      bruikbaar_vanaf: string;
+      ingekort: boolean;
+      vervanger?: string | null;
+      eigen_koersen_vanaf?: string | null;
+    }[];
+    stressperioden?: Stressperiode[];
     waardeverloop: [string, number, number | null][];
     waarschuwingen: string[];
   };
@@ -277,6 +303,8 @@ export type ScenarioUitkomst = {
     storting_per_maand: number;
     doelvermogen: number | null;
     kosten_pct: number;
+    belasting_pct?: number;
+    belasting_effect_mediaan?: number;
     verwacht_rendement: number;
     verwachte_volatiliteit: number;
     jaren: Jaarpunt[];
@@ -290,6 +318,10 @@ export type ScenarioUitkomst = {
   reden: string | null;
   lopende_kosten_pct: number;
   overige_kosten_pct: number;
+  belasting_pct?: number;
+  doel_in_koopkracht?: boolean;
+  crisis_rendement?: number | null;
+  crisis_verlies_eur?: number | null;
   gewichten: Record<string, number>;
   aannames: AannameSet & { id: number };
 };
@@ -299,5 +331,6 @@ export type AannameSet = {
   categorieen: Record<string, { rendement: number; volatiliteit: number }>;
   correlaties: Record<string, Record<string, number>>;
   inflatie: number;
+  stress?: Record<string, number>;
 };
 export type AannamesUit = AannameSet & { id: number; vastgelegd_op: string };

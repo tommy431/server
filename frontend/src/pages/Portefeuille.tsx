@@ -75,6 +75,8 @@ export default function Portefeuille() {
   const [analyseBezig, setAnalyseBezig] = useState(false);
   const [scenario, setScenario] = useState<ScenarioUitkomst | null>(null);
   const [overigeKosten, setOverigeKosten] = useState("0");
+  const [heffing, setHeffing] = useState("0");
+  const [verlengen, setVerlengen] = useState(false);
 
   const [filter, setFilter] = useState({ categorie: "aandelen", regio: "", sector: "" });
   const [gekozen, setGekozen] = useState("");
@@ -150,6 +152,7 @@ export default function Portefeuille() {
   }, [gewichten, uitsluitingen, klaar, id]);
 
   const overigeKostenPct = Math.min(5, Math.max(0, Number(overigeKosten.replace(",", ".")) || 0));
+  const heffingPct = Math.min(5, Math.max(0, Number(heffing.replace(",", ".")) || 0));
   // De historische analyse volgt de doorrekening, maar alleen als de gewichten op 100% uitkomen.
   const analyseNummer = useRef(0);
   const totaal = resultaat?.doorrekening.totaal;
@@ -165,7 +168,11 @@ export default function Portefeuille() {
       try {
         const uit = await api<AnalyseUitkomst>(`/klanten/${id}/portefeuille/analyse`, {
           methode: "POST",
-          body: { posities: Object.entries(gewichten).map(([isin, gewicht]) => ({ isin, gewicht })), uitsluitingen },
+          body: {
+            posities: Object.entries(gewichten).map(([isin, gewicht]) => ({ isin, gewicht })),
+            uitsluitingen,
+            verlengen,
+          },
         });
         if (nummer === analyseNummer.current) setAnalyse(uit);
       } catch {
@@ -182,6 +189,7 @@ export default function Portefeuille() {
             posities: Object.entries(gewichten).map(([isin, gewicht]) => ({ isin, gewicht })),
             uitsluitingen,
             overige_kosten_pct: overigeKostenPct,
+            belasting_pct: heffingPct,
           },
         });
         if (nummer === analyseNummer.current) setScenario(uit);
@@ -195,7 +203,7 @@ export default function Portefeuille() {
     };
     // De doorrekening bepaalt of de gewichten geldig zijn; daarna telt alleen de samenstelling.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resultaat, klaar, id, overigeKostenPct]);
+  }, [resultaat, klaar, id, overigeKostenPct, heffingPct, verlengen]);
 
   if (!klant || !resultaat) {
     return (
@@ -265,6 +273,7 @@ export default function Portefeuille() {
           posities: Object.entries(gewichten).map(([isin, gewicht]) => ({ isin, gewicht })),
           uitsluitingen,
           overige_kosten_pct: overigeKostenPct,
+          belasting_pct: heffingPct,
           toelichting: toelichting || null,
         },
       });
@@ -552,6 +561,16 @@ export default function Portefeuille() {
               <dd>{pct(d.zakelijke_waarden)}</dd>
               <dt>Grootste positie</dt>
               <dd>{pct(d.grootste_positie)}</dd>
+              {d.valutarisico && (
+                <>
+                  <dt>Valutarisico</dt>
+                  <dd>
+                    {pct(d.valutarisico.ja ?? 0)} met blootstelling aan vreemde valuta
+                    {(d.valutarisico.deels ?? 0) > 0 && `, ${pct(d.valutarisico.deels)} gedeeltelijk`}
+                    {(d.valutarisico.onbekend ?? 0) > 0 && `, ${pct(d.valutarisico.onbekend)} onbekend`}
+                  </dd>
+                </>
+              )}
               <dt>Instrumenten</dt>
               <dd>{d.aantal_instrumenten}</dd>
               <dt>Lopende kosten</dt>
@@ -575,6 +594,10 @@ export default function Portefeuille() {
 
       <section className="kaart">
         <h2>Historische analyse</h2>
+        <label className="keuze">
+          <input type="checkbox" checked={verlengen} onChange={(e) => setVerlengen(e.target.checked)} />
+          Korte fondshistorie aanvullen met een vergelijkbaar fonds (gesimuleerd verleden)
+        </label>
         {analyse ? (
           <div className={analyseBezig ? "verouderd" : ""}>
             <Analyse uitkomst={analyse} />
@@ -591,6 +614,10 @@ export default function Portefeuille() {
         <label className="smal-veld">
           Overige kosten % per jaar (advies, beheer, bewaring)
           <input inputMode="decimal" value={overigeKosten} onChange={(e) => setOverigeKosten(e.target.value)} />
+        </label>
+        <label className="smal-veld">
+          Vermogensheffing % per jaar (benadering box 3, optioneel)
+          <input inputMode="decimal" value={heffing} onChange={(e) => setHeffing(e.target.value)} />
         </label>
         {scenario ? (
           <div className={analyseBezig ? "verouderd" : ""}>

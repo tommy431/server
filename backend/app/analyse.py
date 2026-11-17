@@ -402,7 +402,8 @@ def analyseer(
     for code, naam, van, tot in STRESSPERIODEN:
         tekort = [h for h in historie if h.bruikbaar_vanaf > van]
         if tekort or tot > peildatum:
-            eerste = min(tekort, key=lambda h: h.naam) if tekort else None
+            # Het fonds met de kortste historie verklaart waarom de periode ontbreekt.
+            eerste = max(tekort, key=lambda h: (h.bruikbaar_vanaf, h.naam)) if tekort else None
             stress.append(
                 Stressperiode(
                     code,

@@ -600,6 +600,7 @@ ul.lijst li {
 }
 .schuifvlak {
   overflow-x: auto;
+  max-width: 100%;
 }
 .keuzerij {
   display: flex;
@@ -613,4 +614,16 @@ ul.lijst li {
 }
 .grafiek .doellijn {
   stroke-width: 1.5;
+}
+
+/* Eerste kolom blijft staan als een brede tabel op een telefoon horizontaal schuift. */
+@media (max-width: 600px) {
+  .schuifvlak table.compact th:first-child,
+  .schuifvlak table.compact td:first-child {
+    position: sticky;
+    left: 0;
+    background: var(--vlak);
+    z-index: 1;
+    box-shadow: 1px 0 0 var(--rand);
+  }
 }

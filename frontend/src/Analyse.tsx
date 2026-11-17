@@ -1,4 +1,6 @@
 import { AnalyseUitkomst, datum, naam, procent, rendement } from "./api";
+
+const SIM = "†";
 import { Waardegrafiek } from "./Waardegrafiek";
 
 const TITEL: Record<string, string> = { "1j": "1 jaar", "3j": "3 jaar", "5j": "5 jaar", "10j": "10 jaar" };
@@ -33,6 +35,7 @@ export function Analyse({ uitkomst }: { uitkomst: AnalyseUitkomst }) {
         </div>
       )}
 
+      <div className="schuifvlak">
       <table className="compact">
         <thead>
           <tr>
@@ -61,7 +64,10 @@ export function Analyse({ uitkomst }: { uitkomst: AnalyseUitkomst }) {
             const k = p.portefeuille;
             return (
               <tr key={p.code}>
-                <td>{titel}</td>
+                <td>
+                  {titel}
+                  {p.gesimuleerd && <span title="Deels gesimuleerd met een vervanger"> {SIM}</span>}
+                </td>
                 <td className="getal">{rendement(k.rendement_per_jaar)}</td>
                 <td className="getal">{procent(k.volatiliteit)}</td>
                 <td className="getal" title={`Van ${datum(k.max_daling_top)} tot ${datum(k.max_daling_dal)}`}>
@@ -85,8 +91,59 @@ export function Analyse({ uitkomst }: { uitkomst: AnalyseUitkomst }) {
           })}
         </tbody>
       </table>
+      </div>
+
+      {a.perioden.some((p) => p.gesimuleerd) && (
+        <p className="zacht klein-tekst">
+          {SIM} Deels gesimuleerd: voor fondsen met een kortere historie is gerekend met een vergelijkbaar fonds. Dit
+          zijn geen werkelijk behaalde resultaten.
+        </p>
+      )}
 
       <Waardegrafiek punten={a.waardeverloop} />
+
+      {a.stressperioden && a.stressperioden.length > 0 && (
+        <>
+          <h3>Stresstest: de huidige samenstelling in eerdere crises</h3>
+          <div className="schuifvlak">
+            <table className="compact">
+              <thead>
+                <tr>
+                  <th>Periode</th>
+                  <th className="getal">Portefeuille</th>
+                  <th className="getal">Grootste daling</th>
+                  {metBenchmark && <th className="getal">Benchmark</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {a.stressperioden.map((s) => (
+                  <tr key={s.code}>
+                    <td>
+                      {s.naam}
+                      {s.gesimuleerd && <span title="Deels gesimuleerd met een vervanger"> {SIM}</span>}
+                    </td>
+                    {s.beschikbaar && s.rendement !== null ? (
+                      <>
+                        <td className="getal">{rendement(s.rendement)}</td>
+                        <td className="getal">{s.max_daling !== null ? rendement(s.max_daling) : "—"}</td>
+                        {metBenchmark && (
+                          <td className="getal">
+                            {s.benchmark_rendement !== null ? rendement(s.benchmark_rendement) : "—"}
+                          </td>
+                        )}
+                      </>
+                    ) : (
+                      <td colSpan={metBenchmark ? 3 : 2} className="zacht">
+                        Niet beschikbaar: {s.reden}
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
 
       {jaren.length > 0 && beste && slechtste && (
         <>

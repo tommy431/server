@@ -70,6 +70,21 @@ export default function KlantDetail() {
     }
   }
 
+  async function anonimiseer() {
+    if (
+      !window.confirm(
+        "Naam, e-mailadres, geboortedatum, doel en toelichtingen van deze klant worden definitief verwijderd. Dit kan niet ongedaan worden gemaakt. Doorgaan?",
+      )
+    )
+      return;
+    try {
+      await api(`/klanten/${id}/anonimiseren`, { methode: "POST" });
+      await laad();
+    } catch (fout) {
+      setFouten(meldingenVan(fout));
+    }
+  }
+
   async function archiveer(gearchiveerd: boolean) {
     try {
       await api(`/klanten/${id}/archief`, { methode: "PUT", body: { gearchiveerd } });
@@ -124,15 +139,34 @@ export default function KlantDetail() {
               <dd>{klant.geboortedatum ? datum(klant.geboortedatum) : "—"}</dd>
               <dt>Klant sinds</dt>
               <dd>{datum(klant.aangemaakt_op)}</dd>
+              <dt>Dossier bewaren tot</dt>
+              <dd>
+                {klant.bewaren_tot ? datum(klant.bewaren_tot) : "Geen advies vastgelegd"}
+                <div className="zacht klein-tekst">Minimaal vijf jaar na het laatste advies (MiFID II).</div>
+              </dd>
             </dl>
-            <div className="rij">
-              <button className="tekstknop" onClick={() => setBewerken(true)}>
-                Gegevens wijzigen
-              </button>
-              <button className="tekstknop" onClick={() => archiveer(!klant.gearchiveerd)}>
-                {klant.gearchiveerd ? "Terugzetten uit archief" : "Archiveren"}
-              </button>
-            </div>
+            {klant.geanonimiseerd_op ? (
+              <div className="melding">De persoonsgegevens zijn verwijderd op {datum(klant.geanonimiseerd_op)}.</div>
+            ) : (
+              <div className="rij">
+                <button className="tekstknop" onClick={() => setBewerken(true)}>
+                  Gegevens wijzigen
+                </button>
+                <button className="tekstknop" onClick={() => archiveer(!klant.gearchiveerd)}>
+                  {klant.gearchiveerd ? "Terugzetten uit archief" : "Archiveren"}
+                </button>
+                {klant.gearchiveerd && (
+                  <button
+                    className="tekstknop"
+                    disabled={klant.bewaren_tot !== null && klant.bewaren_tot > new Date().toISOString().slice(0, 10)}
+                    title={klant.bewaren_tot ? `Mogelijk vanaf ${datum(klant.bewaren_tot)}` : undefined}
+                    onClick={anonimiseer}
+                  >
+                    Persoonsgegevens verwijderen
+                  </button>
+                )}
+              </div>
+            )}
           </>
         )}
       </section>

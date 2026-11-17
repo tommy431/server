@@ -27,6 +27,7 @@ export default function ProfielFormulier({
   const [inleg, setInleg] = useState(String(vorige?.inleg_eur ?? ""));
   const [storting, setStorting] = useState(String(vorige?.storting_per_maand_eur ?? "0"));
   const [doelvermogen, setDoelvermogen] = useState(String(vorige?.doelvermogen_eur ?? ""));
+  const [doelKoopkracht, setDoelKoopkracht] = useState(vorige?.doel_in_koopkracht ?? false);
   const [antwoorden, setAntwoorden] = useState<Record<string, number>>(vorige?.antwoorden ?? {});
   const [duurzaamheid, setDuurzaamheid] = useState(vorige?.duurzaamheid ?? "geen");
   const [uitsluitingen, setUitsluitingen] = useState<string[]>(vorige?.uitsluitingen ?? []);
@@ -85,6 +86,7 @@ export default function ProfielFormulier({
           inleg_eur: getal(inleg) ?? 0,
           storting_per_maand_eur: getal(storting) ?? 0,
           doelvermogen_eur: getal(doelvermogen),
+          doel_in_koopkracht: doelKoopkracht,
           antwoorden,
           duurzaamheid,
           uitsluitingen,
@@ -133,6 +135,19 @@ export default function ProfielFormulier({
             <input type="number" min={1} step={1} value={doelvermogen} onChange={(e) => setDoelvermogen(e.target.value)} />
           </label>
         </div>
+        {doelvermogen.trim() !== "" && (
+          <div className="keuzerij" role="radiogroup" aria-label="Het doelvermogen is bedoeld">
+            <span>Het doelvermogen is bedoeld:</span>
+            <label className="keuze">
+              <input type="radio" checked={!doelKoopkracht} onChange={() => setDoelKoopkracht(false)} />
+              in euro's van dat moment
+            </label>
+            <label className="keuze">
+              <input type="radio" checked={doelKoopkracht} onChange={() => setDoelKoopkracht(true)} />
+              in koopkracht van vandaag
+            </label>
+          </div>
+        )}
       </fieldset>
 
       {Object.entries(vragenlijst.dimensies).map(([dimensie, titel]) => (

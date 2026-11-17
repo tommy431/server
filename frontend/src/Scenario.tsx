@@ -66,8 +66,29 @@ export function Scenario({ uitkomst }: { uitkomst: ScenarioUitkomst }) {
           <>
             <dt>Kans op doelvermogen</dt>
             <dd>
-              {kans(s.kans_doel_nominaal)} dat {euro(s.doelvermogen)} wordt gehaald. Gemeten in koopkracht van vandaag is
-              die kans {kans(s.kans_doel_reeel)}.
+              {uitkomst.doel_in_koopkracht ? (
+                <>
+                  <strong>{kans(s.kans_doel_reeel)}</strong> dat {euro(s.doelvermogen)} in koopkracht van vandaag wordt
+                  gehaald, zoals afgesproken in het klantprofiel. Nominaal gemeten is die kans {kans(s.kans_doel_nominaal)}.
+                </>
+              ) : (
+                <>
+                  <strong>{kans(s.kans_doel_nominaal)}</strong> dat {euro(s.doelvermogen)} wordt gehaald, in euro's van
+                  dat moment zoals afgesproken in het klantprofiel. In koopkracht van vandaag is die kans{" "}
+                  {kans(s.kans_doel_reeel)}.
+                </>
+              )}
+            </dd>
+          </>
+        )}
+        {uitkomst.crisis_rendement !== null && uitkomst.crisis_rendement !== undefined && (
+          <>
+            <dt>Zware crisis</dt>
+            <dd>
+              Bij een crisis met de schokken uit de aannames verandert de waarde direct met{" "}
+              {procent(uitkomst.crisis_rendement)}
+              {(uitkomst.crisis_verlies_eur ?? 0) > 0 && <>, circa {euro(uitkomst.crisis_verlies_eur ?? 0)} op de inleg</>}.
+              Zo'n daling valt buiten het slechte scenario hierboven.
             </dd>
           </>
         )}
@@ -79,6 +100,16 @@ export function Scenario({ uitkomst }: { uitkomst: ScenarioUitkomst }) {
           {uitkomst.overige_kosten_pct > 0 && ` + ${procent(uitkomst.overige_kosten_pct / 100)} overige kosten`}) verlaagt
           het verwachte eindvermogen met circa {euro(s.kosten_effect_mediaan)}.
         </dd>
+        {(uitkomst.belasting_pct ?? 0) > 0 && s.belasting_effect_mediaan !== undefined && (
+          <>
+            <dt>Effect van vermogensheffing</dt>
+            <dd>
+              {procent((uitkomst.belasting_pct ?? 0) / 100)} per jaar verlaagt het verwachte eindvermogen met circa{" "}
+              {euro(s.belasting_effect_mediaan)}. Dit is een benadering; de werkelijke heffing hangt af van de persoonlijke
+              situatie en de wet op dat moment.
+            </dd>
+          </>
+        )}
         <dt>Effect van inflatie</dt>
         <dd>
           Het verwachte eindvermogen is in koopkracht van vandaag circa {euro(s.inflatie_effect_mediaan)} minder waard.
@@ -107,13 +138,14 @@ export function Scenario({ uitkomst }: { uitkomst: ScenarioUitkomst }) {
         </li>
         <li>
           De inleg wordt direct belegd en de storting van {euro(s.storting_per_maand)} aan het eind van elke maand. De
-          portefeuille wordt maandelijks teruggebracht naar de verdeling per categorie.
+          portefeuille wordt eens per jaar teruggebracht naar de verdeling per categorie.
         </li>
         <li>
           Het model gaat uit van normaal verdeelde (log)rendementen. Extreme dalingen komen in werkelijkheid vaker voor
-          dan het model aanneemt; het slechte scenario is geen ondergrens.
+          dan het model aanneemt; het slechte scenario is geen ondergrens. Zie daarvoor de zware crisis hierboven en de
+          stresstest bij de historische analyse.
         </li>
-        <li>Belastingen zijn niet meegerekend.</li>
+        {!(uitkomst.belasting_pct ?? 0) && <li>Belastingen zijn niet meegerekend.</li>}
       </ul>
       <p className="wettelijk">
         Dit zijn scenario's op basis van aannames, geen voorspelling. De werkelijke uitkomst kan hoger of lager zijn,

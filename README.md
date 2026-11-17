@@ -81,6 +81,8 @@ Tests: `uv run pytest` (SQLite in het geheugen; zet `TEST_DATABASE_URL` om tegen
   de beperkingen vereist een toelichting, die versleuteld wordt bewaard.
 - Elke vastgelegde versie bewaart een momentopname van banden en doorrekening, zodat het advies
   later te reconstrueren is.
+- Het valutarisico per fonds (`valutarisico` in `universum.csv`) is door mij ingevuld op basis
+  van de fondsnaam en het beleggingsgebied; controleer het tegen de fondsdocumentatie.
 - Regio en sector zijn labels van het instrument. Van breed gespreide fondsen is de onderliggende
   verdeling niet bekend; uitsluitingen op regio of sector en duurzaamheidswensen kunnen daarom
   niet op het niveau van de onderliggende beleggingen worden getoetst.
@@ -93,25 +95,38 @@ Tests: `uv run pytest` (SQLite in het geheugen; zet `TEST_DATABASE_URL` om tegen
   Transactiekosten en advieskosten zijn niet meegerekend.
 - De portefeuille wordt jaarlijks op de eerste handelsdag teruggebracht naar de gewichten.
 - Een periode is alleen beschikbaar als elk fonds over de hele periode koersen heeft; anders
-  wordt gemeld welk fonds de historie beperkt. Koersen van vóór een onverklaarbare koerssprong
-  van meer dan 20% worden niet gebruikt.
-- De benchmark is de strategische asset allocatie van het risicoprofiel, met één breed fonds per
-  categorie (`BENCHMARK_FONDSEN` in `backend/app/api/portefeuilles.py`). Het geldmarktfonds
-  geldt als risicovrij rendement.
+  wordt gemeld welk fonds de historie beperkt. Op verzoek wordt een korte fondshistorie aangevuld
+  met het rendement van een fonds met dezelfde categorie, regio en sector. Zulke perioden worden
+  als gesimuleerd gemarkeerd.
+- Koersen van vóór een onverklaarbare koerssprong van meer dan 20% worden niet gebruikt.
+- Risicovrij rendement voor de Sharpe-ratio: de kortlopende eurorente van de ECB (€STR, vóór
+  oktober 2019 EONIA).
+- Stresstest: de huidige samenstelling in de kredietcrisis (2008–2009), de Europese
+  schuldencrisis (2011), de coronacrash (2020) en het jaar 2022, voor zover er koersen zijn.
 - Bij elke vastgelegde portefeuilleversie wordt de analyse bewaard zoals die toen was.
 
 ## Verwacht rendement
 
 - 10.000 gesimuleerde verlopen over de horizon van de klant, met maandelijkse rendementen per
-  beleggingscategorie (lognormaal, met correlaties), de inleg, de maandelijkse stortingen, de
-  lopende fondskosten en eventuele overige kosten. Met een vast startgetal, zodat dezelfde invoer
+  beleggingscategorie (lognormaal, met correlaties), jaarlijks herbalanceren, de inleg, de
+  maandelijkse stortingen, de lopende fondskosten, eventuele overige kosten en een optionele
+  vermogensheffing als benadering van box 3. Met een vast startgetal, zodat dezelfde invoer
   dezelfde uitkomst geeft.
 - Getoond worden een slecht, verwacht en goed scenario (5e, 50e en 95e percentiel), de kans op het
-  doelvermogen, de kans op minder dan ingelegd en het effect van kosten en inflatie, nominaal en
-  in koopkracht van vandaag.
+  doelvermogen (nominaal of in koopkracht van vandaag, zoals vastgelegd in het profiel), de kans
+  op minder dan ingelegd en het effect van kosten, heffing en inflatie.
+- Een hypothetische zware crisis met een instelbare schok per categorie laat zien wat een daling
+  buiten het slechte scenario zou betekenen.
 - De aannames (rendement, volatiliteit, correlaties, inflatie, bron en peildatum) zijn te beheren
   in het scherm Aannames. Elke wijziging is een nieuwe versie; elke vastgelegde portefeuille
   bewaart haar scenario en de gebruikte aannames.
+
+## Klantgegevens verwijderen
+
+Een gearchiveerde klant kan worden geanonimiseerd zodra de bewaartermijn van vijf jaar na het
+laatste advies is verstreken (MiFID II). Naam, e-mailadres, geboortedatum, doel en
+toelichtingen worden dan gewist; de cijfers blijven bewaard. Laat de termijn toetsen door een
+jurist: die kan langer zijn als de AFM daarom vraagt.
 
 ## Nog te controleren
 

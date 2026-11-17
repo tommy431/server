@@ -14,6 +14,7 @@ export default function Aannames() {
   const [waarden, setWaarden] = useState<Record<string, Invoer>>({});
   const [correlaties, setCorrelaties] = useState<Record<string, Record<string, string>>>({});
   const [inflatie, setInflatie] = useState("");
+  const [stress, setStress] = useState<Record<string, string>>({});
   const [bron, setBron] = useState("");
   const [peildatum, setPeildatum] = useState("");
   const [fouten, setFouten] = useState<string[]>([]);
@@ -34,6 +35,7 @@ export default function Aannames() {
       ),
     );
     setInflatie(alsTekst(a.inflatie));
+    setStress(Object.fromEntries(CATEGORIEEN.map((c) => [c, alsTekst(a.stress?.[c] ?? 0)])));
     setBron(a.bron);
     setPeildatum(a.peildatum);
   }
@@ -61,6 +63,7 @@ export default function Aannames() {
           bron,
           peildatum,
           inflatie: alsFractie(inflatie),
+          stress: Object.fromEntries(CATEGORIEEN.map((c) => [c, alsFractie(stress[c] ?? "0")])),
           categorieen: Object.fromEntries(
             CATEGORIEEN.map((c) => [
               c,
@@ -172,6 +175,28 @@ export default function Aannames() {
               ))}
             </tbody>
           </table>
+        </div>
+
+        <h3>Zware crisis</h3>
+        <p className="zacht klein-tekst">
+          Directe waardeverandering per categorie in een hypothetische zware crisis, in procenten. Wordt bij elke
+          portefeuille getoond naast de scenario's.
+        </p>
+        <div className="kolommen">
+          {CATEGORIEEN.map((c) => (
+            <label key={c}>
+              {naam(c)} %
+              <input
+                inputMode="decimal"
+                aria-label={`Crisis ${naam(c)}`}
+                value={stress[c] ?? ""}
+                onChange={(e) => {
+                  setGelukt(false);
+                  setStress({ ...stress, [c]: e.target.value });
+                }}
+              />
+            </label>
+          ))}
         </div>
 
         <div className="kolommen">
