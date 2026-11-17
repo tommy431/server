@@ -98,9 +98,11 @@ def test_aannames_via_voorstel_en_afwijzen(client, db, vier_ogen):
     eerste = inloggen(client, db, "beheer1@voorbeeld.nl", "beheerder")
     tweede = inloggen(client, db, "beheer2@voorbeeld.nl", "beheerder")
     a = client.post("/aannames", json=aannames_in(bron="Bron A"), headers=eerste).json()
-    b = client.post("/aannames", json=aannames_in(bron="Bron B"), headers=eerste).json()
-    assert a["status"] == b["status"] == "open"
+    assert a["status"] == "open"
     assert client.get("/aannames", headers=eerste).json()["bron"].startswith("Voorbeeldwaarden")
+    # Een tweede voorstel over hetzelfde onderwerp wacht tot het eerste is afgehandeld.
+    r = client.post("/aannames", json=aannames_in(bron="Bron B"), headers=tweede)
+    assert r.status_code == 409 and f"nummer {a['id']}" in r.json()["detail"]
 
     r = client.post(
         f"/wijzigingsvoorstellen/{a['id']}/afwijzen",
@@ -108,25 +110,14 @@ def test_aannames_via_voorstel_en_afwijzen(client, db, vier_ogen):
         headers=tweede,
     )
     assert r.json()["status"] == "afgewezen" and r.json()["reden"] == "Bron niet erkend"
-    assert (
-        client.post(f"/wijzigingsvoorstellen/{a['id']}/goedkeuren", headers=tweede).status_code
-        == 409
-    )
+    pad_a = f"/wijzigingsvoorstellen/{a['id']}/goedkeuren"
+    assert client.post(pad_a, headers=tweede).status_code == 409
+
     # De indiener kan het eigen voorstel intrekken; een reden is verplicht.
-    assert (
-        client.post(
-            f"/wijzigingsvoorstellen/{b['id']}/afwijzen", json={"reden": ""}, headers=eerste
-        ).status_code
-        == 422
-    )
-    assert (
-        client.post(
-            f"/wijzigingsvoorstellen/{b['id']}/afwijzen",
-            json={"reden": "Ingetrokken"},
-            headers=eerste,
-        ).status_code
-        == 200
-    )
+    b = client.post("/aannames", json=aannames_in(bron="Bron B"), headers=eerste).json()
+    pad_b = f"/wijzigingsvoorstellen/{b['id']}/afwijzen"
+    assert client.post(pad_b, json={"reden": ""}, headers=eerste).status_code == 422
+    assert client.post(pad_b, json={"reden": "Ingetrokken"}, headers=eerste).status_code == 200
     assert client.get("/aannames", headers=eerste).json()["bron"].startswith("Voorbeeldwaarden")
 
     c = client.post("/aannames", json=aannames_in(bron="Bron C"), headers=eerste).json()
@@ -145,3 +136,28 @@ def test_ongeldig_voorstel_wordt_meteen_geweigerd(client, db, vier_ogen):
     assert r.status_code == 422
     assert client.get("/wijzigingsvoorstellen", headers=kop).json() == []
     assert client.post("/wijzigingsvoorstellen/999/goedkeuren", headers=kop).status_code == 404
+
+
+def test_voorstellen_voor_verschillende_profielen_mogen_naast_elkaar(client, db, vier_ogen):
+    kop = inloggen(client, db, "beheer1@voorbeeld.nl", "beheerder")
+    nieuw = regels(aandelen=[55, 45, 65], obligaties=[33, 20, 45])
+    assert (
+        client.put("/risicoprofielen/neutraal/allocatie", json=nieuw, headers=kop).status_code
+        == 200
+    )
+    assert (
+        client.put("/risicoprofielen/neutraal/allocatie", json=nieuw, headers=kop).status_code
+        == 409
+    )
+    defensief = [
+        {"categorie": c, "streef": s, "minimum": lo, "maximum": hi}
+        for c, (s, lo, hi) in {
+            "aandelen": (25, 20, 40),
+            "obligaties": (60, 40, 70),
+            "vastgoed": (5, 0, 10),
+            "grondstoffen": (0, 0, 5),
+            "liquiditeiten": (10, 0, 25),
+        }.items()
+    ]
+    r = client.put("/risicoprofielen/defensief/allocatie", json=defensief, headers=kop)
+    assert r.status_code == 200

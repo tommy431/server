@@ -5,6 +5,7 @@ from app.api import (
     auth,
     instrumenten,
     klanten,
+    onderneming,
     portefeuilles,
     rapporten,
     wijzigingen,
@@ -18,6 +19,7 @@ app.include_router(portefeuilles.router)
 app.include_router(aannames.router)
 app.include_router(rapporten.router)
 app.include_router(wijzigingen.router)
+app.include_router(onderneming.router)
 
 
 @app.get("/gezondheid")

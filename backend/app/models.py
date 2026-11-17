@@ -322,3 +322,16 @@ class Wijzigingsvoorstel(Basis):
     beoordeeld_op: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reden: Mapped[str | None] = mapped_column(String(1000))
     resultaat_id: Mapped[int | None] = mapped_column(Integer)
+
+
+class Ondernemingsgegevens(Basis):
+    """Gegevens van de onderneming voor het adviesrapport. De nieuwste versie geldt."""
+
+    __tablename__ = "ondernemingsgegevens"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    gegevens: Mapped[dict] = mapped_column(JSON)
+    vastgelegd_op: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    vastgelegd_door: Mapped[int | None] = mapped_column(ForeignKey("adviseur.id"))

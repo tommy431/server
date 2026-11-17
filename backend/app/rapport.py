@@ -548,12 +548,14 @@ def _watermerk(canvas) -> None:
     canvas.restoreState()
 
 
-def _kop_en_voet(canvas, doc, titel: str, concept: bool) -> None:
+def _kop_en_voet(canvas, doc, titel: str, concept: bool, bedrijf: str = "") -> None:
     if concept:
         _watermerk(canvas)
     canvas.saveState()
     canvas.setFont("DejaVu", 7.5)
     canvas.setFillColor(ZACHT)
+    if bedrijf:
+        canvas.drawString(20 * mm, 8.5 * mm, bedrijf)
     canvas.drawString(
         20 * mm, 12 * mm, titel + (" · CONCEPT, niet voor de klant" if concept else "")
     )
@@ -610,6 +612,22 @@ def maak_rapport(g: dict) -> bytes:
     if sc and sc.get("doelvermogen"):
         kans_doel = sc["kans_doel_reeel"] if reeel else sc["kans_doel_nominaal"]
     slecht_jaar = su.get("slecht_jaar")
+    ond = g.get("onderneming") or {}
+    bedrijfsregel = " · ".join(
+        deel
+        for deel in (
+            ond.get("naam"),
+            f"AFM-vergunning {ond['afm_vergunningnummer']}"
+            if ond.get("afm_vergunningnummer")
+            else "",
+            f"KvK {ond['kvk_nummer']}" if ond.get("kvk_nummer") else "",
+            f"Kifid {ond['kifid_nummer']}" if ond.get("kifid_nummer") else "",
+        )
+        if deel
+    )
+    contact = " · ".join(
+        d for d in (ond.get("telefoon"), ond.get("email"), ond.get("website")) if d
+    )
     inhoud: list = []
 
     # Voorblad en samenvatting -------------------------------------------------------------
@@ -617,7 +635,8 @@ def maak_rapport(g: dict) -> bytes:
         _p("Uw beleggingsadvies", "titel"),
         Spacer(1, 2 * mm),
         _p(
-            f"{_esc(klant['naam'])} · {datum_lang(pf['vastgelegd_op'])} · adviseur {_esc(g['adviseur'])}",
+            f"{_esc(klant['naam'])} · {datum_lang(pf['vastgelegd_op'])} · adviseur {_esc(g['adviseur'])}"
+            + (f" · {_esc(ond['naam'])}" if ond.get("naam") else ""),
             "klein",
         ),
         Spacer(1, 5 * mm),
@@ -1287,6 +1306,20 @@ def maak_rapport(g: dict) -> bytes:
             "<b>Bij onrust op de beurs:</b> verkoop niet overhaast. Bel ons gerust om de situatie te bespreken."
         ),
     ]
+    if contact or ond.get("klachtenregeling") or ond.get("kifid_nummer"):
+        inhoud.append(_p("Vragen of een klacht?", "h2"))
+        if contact:
+            inhoud.append(_p(f"U bereikt ons via {_esc(contact)}."))
+        if ond.get("klachtenregeling"):
+            inhoud.append(_p(_esc(ond["klachtenregeling"])))
+        if ond.get("kifid_nummer"):
+            inhoud.append(
+                _p(
+                    "Komt u er met ons niet uit, dan kunt u terecht bij het Klachteninstituut Financiële "
+                    f"Dienstverlening (Kifid), www.kifid.nl. Wij zijn daarbij aangesloten onder nummer "
+                    f"{_esc(ond['kifid_nummer'])}."
+                )
+            )
 
     # Bijlagen ------------------------------------------------------------------------------
     inhoud += [PageBreak(), _p("Bijlage A: begrippen", "h1")]
@@ -1436,7 +1469,7 @@ def maak_rapport(g: dict) -> bytes:
     )
 
     def voet(canvas, doc):
-        _kop_en_voet(canvas, doc, titel_doc, concept)
+        _kop_en_voet(canvas, doc, titel_doc, concept, bedrijfsregel)
 
     doc.build(inhoud, onFirstPage=voet, onLaterPages=voet)
     return buffer.getvalue()

@@ -219,6 +219,7 @@ def test_definitief_rapport_zonder_watermerk(ingelogd, klant_id, db, tmp_path): 
     for i in db.scalars(select(Instrument)):
         i.kosten_geverifieerd = True
     db.commit()
+    assert ingelogd.put("/onderneming", json=ONDERNEMING).status_code == 200
     assert ingelogd.post("/aannames", json=aannames_in(bron="Testbron")).status_code == 201
     v = ingelogd.post(pad(klant_id, "voorstel"), json={}).json()
     vul_koersen(db, per_jaar=0.05)
@@ -231,3 +232,83 @@ def test_definitief_rapport_zonder_watermerk(ingelogd, klant_id, db, tmp_path): 
         ingelogd.get(f"/klanten/{klant_id}/rapporten/{meta['id']}/pdf").content, tmp_path
     )
     assert "CONCEPT" not in inhoud and "Uw beleggingsadvies" in inhoud
+
+
+ONDERNEMING = {
+    "naam": "Voorbeeld Vermogensadvies B.V.",
+    "adres": "Damrak 1",
+    "postcode_plaats": "1012 LG Amsterdam",
+    "telefoon": "020 123 45 67",
+    "email": "info@voorbeeld.nl",
+    "website": "www.voorbeeld.nl",
+    "kvk_nummer": "12345678",
+    "afm_vergunningnummer": "12000001",
+    "kifid_nummer": "300.000001",
+    "klachtenregeling": "Een klacht kunt u schriftelijk indienen; u ontvangt binnen twee weken een reactie.",
+}
+
+
+def test_ondernemingsgegevens_in_rapport_en_als_voorwaarde_voor_definitief(
+    ingelogd,
+    klant_id,  # noqa: F811
+    db,
+    tmp_path,
+):
+    from app.models import Instrument
+    from tests.test_aannames_scenario_api import aannames_in
+
+    leeg = ingelogd.get("/onderneming").json()
+    assert "AFM-vergunningnummer" in leeg["ontbrekend"] and leeg["naam"] == ""
+
+    for i in db.scalars(select(Instrument)):
+        i.kosten_geverifieerd = True
+    db.commit()
+    ingelogd.post("/aannames", json=aannames_in(bron="Testbron"))
+    v = ingelogd.post(pad(klant_id, "voorstel"), json={}).json()
+    vul_koersen(db, per_jaar=0.05)
+    versie = ingelogd.post(pad(klant_id, "versies"), json={"posities": v["posities"]}).json()[
+        "versie"
+    ]
+
+    # Zonder bedrijfsgegevens blijft het rapport een concept.
+    meta = ingelogd.post(f"/klanten/{klant_id}/portefeuille/versies/{versie}/rapporten").json()
+    assert meta["status"] == "concept"
+    assert any("Gegevens van de onderneming ontbreken" in r for r in meta["concept_redenen"])
+
+    r = ingelogd.put("/onderneming", json=ONDERNEMING)
+    assert r.status_code == 200 and r.json()["status"] == "doorgevoerd"
+    assert ingelogd.get("/onderneming").json()["ontbrekend"] == []
+    meta = ingelogd.post(f"/klanten/{klant_id}/portefeuille/versies/{versie}/rapporten").json()
+    assert meta["status"] == "definitief"
+    inhoud = tekst_van(
+        ingelogd.get(f"/klanten/{klant_id}/rapporten/{meta['id']}/pdf").content, tmp_path
+    )
+    for verwacht in [
+        "Voorbeeld Vermogensadvies B.V.",
+        "AFM-vergunning 12000001",
+        "Kifid 300.000001",
+        "Vragen of een klacht?",
+        "020 123 45 67",
+        "binnen twee weken",
+        "www.kifid.nl",
+    ]:
+        assert verwacht in inhoud, verwacht
+
+
+def test_ongeldige_ondernemingsgegevens_en_rechten(ingelogd, client, db):
+    assert (
+        ingelogd.put("/onderneming", json={**ONDERNEMING, "kvk_nummer": "123"}).status_code == 422
+    )
+    assert (
+        ingelogd.put("/onderneming", json={**ONDERNEMING, "email": "geen-adres"}).status_code == 422
+    )
+    db.add(
+        Adviseur(email="gewoon@voorbeeld.nl", naam="G", wachtwoord_hash=hash_wachtwoord(WACHTWOORD))
+    )
+    db.commit()
+    token = client.post(
+        "/auth/login", json={"email": "gewoon@voorbeeld.nl", "wachtwoord": WACHTWOORD}
+    ).json()["access_token"]
+    kop = {"Authorization": f"Bearer {token}"}
+    assert client.get("/onderneming", headers=kop).status_code == 200
+    assert client.put("/onderneming", json=ONDERNEMING, headers=kop).status_code == 403

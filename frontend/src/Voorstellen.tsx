@@ -16,7 +16,26 @@ type Aannamesinhoud = {
 const p = (f: number) => `${String(Math.round(f * 10000) / 100).replace(".", ",")}%`;
 
 /** De inhoudelijke verschillen van een voorstel ten opzichte van wat nu geldt, in woorden. */
+export const ONDERNEMINGSVELDEN: Record<string, string> = {
+  naam: "Naam",
+  adres: "Adres",
+  postcode_plaats: "Postcode en plaats",
+  telefoon: "Telefoon",
+  email: "E-mailadres",
+  website: "Website",
+  kvk_nummer: "KvK-nummer",
+  afm_vergunningnummer: "AFM-vergunningnummer",
+  kifid_nummer: "Kifid-aansluitnummer",
+  klachtenregeling: "Klachtenregeling",
+};
+
 function verschillen(v: Voorstel): string[] {
+  if (v.soort === "onderneming") {
+    const oud = (v.oud ?? {}) as Record<string, unknown>;
+    return Object.entries(v.inhoud)
+      .filter(([k, w]) => (w ?? "") !== (oud[k] ?? ""))
+      .map(([k, w]) => `${ONDERNEMINGSVELDEN[k] ?? k}: ${String(oud[k] || "—")} → ${String(w || "—")}`);
+  }
   if (v.soort === "modelallocatie") {
     const nieuw = (v.inhoud.regels ?? {}) as Regels;
     const oud = ((v.oud?.regels ?? {}) as Regels) || {};
@@ -106,7 +125,9 @@ export function Voorstellen({
         return (
           <div key={v.id} className="voorstel">
             <p>
-              <strong>{v.sleutel ? naam(v.sleutel) : "Nieuwe aannames"}</strong>
+              <strong>
+                {v.sleutel ? naam(v.sleutel) : v.soort === "onderneming" ? "Gegevens van de onderneming" : "Nieuwe aannames"}
+              </strong>
               <span className="zacht">
                 {" "}
                 · voorgesteld door {v.voorgesteld_door} op {datum(v.voorgesteld_op)}

@@ -2,7 +2,7 @@ export type Adviseur = { id: number; email: string; naam: string; rol: "adviseur
 
 export type Voorstel = {
   id: number;
-  soort: "modelallocatie" | "aannames";
+  soort: "modelallocatie" | "aannames" | "onderneming";
   sleutel: string | null;
   inhoud: Record<string, unknown>;
   oud: Record<string, unknown> | null;

@@ -85,7 +85,25 @@ def _voer_door(db: Session, v: Wijzigingsvoorstel, beoordelaar: Adviseur) -> Non
 def dien_in(
     db: Session, adviseur: Adviseur, soort: str, sleutel: str | None, inhoud: dict, oud: dict | None
 ) -> VoorstelUit:
-    """Legt een voorstel vast; zonder vier-ogenprincipe wordt het direct doorgevoerd."""
+    """Legt een voorstel vast; zonder vier-ogenprincipe wordt het direct doorgevoerd.
+
+    Per onderwerp kan er maar één voorstel tegelijk openstaan, zodat niet ongemerkt twee
+    tegenstrijdige wijzigingen na elkaar worden goedgekeurd.
+    """
+    open_ = db.scalar(
+        select(Wijzigingsvoorstel).where(
+            Wijzigingsvoorstel.soort == soort,
+            Wijzigingsvoorstel.sleutel.is_(None)
+            if sleutel is None
+            else Wijzigingsvoorstel.sleutel == sleutel,
+            Wijzigingsvoorstel.status == "open",
+        )
+    )
+    if open_ is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Er staat al een voorstel open (nummer {open_.id}); keur dat eerst goed of wijs het af",
+        )
     v = Wijzigingsvoorstel(
         soort=soort,
         sleutel=sleutel,

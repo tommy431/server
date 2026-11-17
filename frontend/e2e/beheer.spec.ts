@@ -65,3 +65,36 @@ test("aannames: voorstel afwijzen met reden", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Wacht op goedkeuring" })).toHaveCount(0);
   await expect(page.getByLabel("Aandelen rendement")).toHaveValue("6,5");
 });
+
+test("bedrijfsgegevens invullen en laten goedkeuren", async ({ page }) => {
+  await inloggen(page, BEHEERDER_1);
+  await page.getByRole("link", { name: "Onderneming" }).click();
+  await expect(page.getByText(/Nog niet ingevuld: naam van de onderneming/)).toBeVisible();
+  const velden: Record<string, string> = {
+    Naam: "Voorbeeld Vermogensadvies B.V.",
+    Adres: "Damrak 1",
+    "Postcode en plaats": "1012 LG Amsterdam",
+    Telefoon: "020 123 45 67",
+    "E-mailadres": "info@voorbeeld.nl",
+    "KvK-nummer": "12345678",
+    "AFM-vergunningnummer": "12000001",
+    "Kifid-aansluitnummer": "300.000001",
+    "Klachtenregeling (zoals in het rapport)": "Een klacht kunt u schriftelijk indienen.",
+  };
+  for (const [label, waarde] of Object.entries(velden)) await page.getByLabel(label, { exact: true }).fill(waarde);
+  await page.getByRole("button", { name: "Wijziging voorstellen" }).click();
+  await expect(page.getByText(/Voorstel ingediend; de gegevens gelden pas/)).toBeVisible();
+  await expect(page.getByText("Naam: — → Voorbeeld Vermogensadvies B.V.")).toBeVisible();
+  await uitloggen(page);
+
+  await inloggen(page, BEHEERDER_2);
+  await page.getByRole("link", { name: "Onderneming" }).click();
+  await page.getByRole("button", { name: "Goedkeuren" }).click();
+  await expect(page.getByText(/Nog niet ingevuld/)).toHaveCount(0);
+  await expect(page.getByLabel("Naam", { exact: true })).toHaveValue("Voorbeeld Vermogensadvies B.V.");
+  await uitloggen(page);
+
+  await inloggen(page, ADVISEUR);
+  await page.getByRole("link", { name: "Onderneming" }).click();
+  await expect(page.getByLabel("Naam", { exact: true })).toBeDisabled();
+});

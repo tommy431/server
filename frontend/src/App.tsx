@@ -8,6 +8,7 @@ import KlantDetail from "./pages/KlantDetail";
 import Klanten from "./pages/Klanten";
 import Login from "./pages/Login";
 import Modelallocaties from "./pages/Modelallocaties";
+import Onderneming from "./pages/Onderneming";
 import Portefeuille from "./pages/Portefeuille";
 
 export default function App() {
@@ -46,6 +47,7 @@ export default function App() {
           <NavLink to="/modelallocaties">Modelallocaties</NavLink>
           <NavLink to="/aannames">Aannames</NavLink>
           <NavLink to="/data">Data</NavLink>
+          <NavLink to="/onderneming">Onderneming</NavLink>
         </nav>
         <span className="wie">
           {adviseur.naam}
@@ -63,6 +65,7 @@ export default function App() {
           <Route path="/modelallocaties" element={<Modelallocaties adviseur={adviseur} />} />
           <Route path="/aannames" element={<Aannames adviseur={adviseur} />} />
           <Route path="/data" element={<Data />} />
+          <Route path="/onderneming" element={<Onderneming adviseur={adviseur} />} />
           <Route path="*" element={<Navigate to="/klanten" replace />} />
         </Routes>
       </main>

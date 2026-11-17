@@ -7,6 +7,8 @@ from sqlalchemy import func, select
 
 from app.api.afhankelijkheden import Db, Ingelogd
 from app.api.klanten import _eigen_klant
+from app.api.onderneming import huidige as huidige_onderneming
+from app.api.onderneming import ontbrekend
 from app.logboek import leg_vast
 from app.models import Adviseur, Instrument, Klant, Klantprofiel, Portefeuille, Positie, Rapport
 from app.rapport import maak_rapport
@@ -55,7 +57,11 @@ def rapportgegevens(db: Db, klant: Klant, portefeuille: Portefeuille, opgesteld_
                 / pos.gewicht,
             }
         )
+    onderneming = huidige_onderneming(db)
     redenen = concept_redenen(portefeuille)
+    ontbreekt = ontbrekend(onderneming)
+    if ontbreekt:
+        redenen.append("Gegevens van de onderneming ontbreken: " + ", ".join(ontbreekt) + ".")
     return {
         "klant": {"naam": klant.naam},
         "adviseur": adviseur.naam,
@@ -91,6 +97,7 @@ def rapportgegevens(db: Db, klant: Klant, portefeuille: Portefeuille, opgesteld_
         },
         "posities": posities,
         "fondsnamen": {i.isin: i.naam for i in instrumenten.values()},
+        "onderneming": onderneming.model_dump(),
         "concept": bool(redenen),
         "concept_redenen": redenen,
         "databron": DATABRON,
