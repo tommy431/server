@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, status
@@ -7,7 +7,15 @@ from sqlalchemy import func, select
 
 from app.api.afhankelijkheden import Db, Ingelogd
 from app.logboek import leg_vast
-from app.models import CATEGORIEEN, Adviseur, Klant, Klantprofiel, Modelallocatie, Risicoprofiel
+from app.models import (
+    CATEGORIEEN,
+    Adviseur,
+    Klant,
+    Klantprofiel,
+    Modelallocatie,
+    Portefeuille,
+    Risicoprofiel,
+)
 from app.profiel import (
     DIMENSIES,
     LAGE_KENNIS_GRENS,
@@ -18,6 +26,12 @@ from app.profiel import (
 )
 
 router = APIRouter(tags=["klanten en profielen"])
+
+# Adviesdossiers moeten minimaal vijf jaar na het advies bewaard blijven (MiFID II, art. 16 lid 6
+# en art. 72 van Gedelegeerde Verordening 2017/565). Tot die tijd geldt het recht op
+# verwijdering uit de AVG niet voor het dossier (art. 17 lid 3 onder b AVG).
+BEWAARTERMIJN_JAREN = 5
+VERWIJDERD = "[verwijderd]"
 
 UITSLUITINGEN = ("wapens", "tabak", "fossiele-brandstoffen", "gokken", "alcohol", "kernenergie")
 
@@ -75,6 +89,8 @@ class KlantUit(BaseModel):
     email: str | None
     geboortedatum: date | None
     gearchiveerd: bool
+    geanonimiseerd_op: datetime | None
+    bewaren_tot: date | None  # einde bewaartermijn van het laatste advies
     aangemaakt_op: datetime
     huidig_profiel: ProfielUit | None
 
@@ -145,9 +161,24 @@ def _klant_uit(db: Db, klant: Klant, codes: dict[int, str]) -> KlantUit:
         email=klant.email,
         geboortedatum=date.fromisoformat(klant.geboortedatum) if klant.geboortedatum else None,
         gearchiveerd=klant.gearchiveerd,
+        geanonimiseerd_op=klant.geanonimiseerd_op,
+        bewaren_tot=_bewaren_tot(db, klant),
         aangemaakt_op=klant.aangemaakt_op,
         huidig_profiel=_profiel_uit(huidig, codes) if huidig else None,
     )
+
+
+def _bewaren_tot(db: Db, klant: Klant) -> date | None:
+    laatste = db.scalar(
+        select(func.max(Portefeuille.vastgelegd_op)).where(Portefeuille.klant_id == klant.id)
+    )
+    if laatste is None:
+        return None
+    dag = laatste.date()
+    try:
+        return dag.replace(year=dag.year + BEWAARTERMIJN_JAREN)
+    except ValueError:  # 29 februari
+        return dag.replace(year=dag.year + BEWAARTERMIJN_JAREN, day=28)
 
 
 def _vul_klant(klant: Klant, gegevens: KlantIn) -> None:
@@ -308,6 +339,8 @@ def klant(klant_id: int, db: Db, adviseur: Ingelogd) -> KlantUit:
 @router.put("/klanten/{klant_id}", response_model=KlantUit)
 def wijzig_klant(klant_id: int, gegevens: KlantIn, db: Db, adviseur: Ingelogd) -> KlantUit:
     klant = _eigen_klant(db, adviseur, klant_id)
+    if klant.geanonimiseerd_op is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Deze klant is geanonimiseerd")
     gewijzigd = [
         veld
         for veld, nieuw in (
@@ -340,6 +373,10 @@ class ArchiefIn(BaseModel):
 @router.put("/klanten/{klant_id}/archief", response_model=KlantUit)
 def archiveer(klant_id: int, verzoek: ArchiefIn, db: Db, adviseur: Ingelogd) -> KlantUit:
     klant = _eigen_klant(db, adviseur, klant_id)
+    if klant.geanonimiseerd_op is not None and not verzoek.gearchiveerd:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Een geanonimiseerde klant blijft gearchiveerd"
+        )
     klant.gearchiveerd = verzoek.gearchiveerd
     leg_vast(
         db,
@@ -347,6 +384,47 @@ def archiveer(klant_id: int, verzoek: ArchiefIn, db: Db, adviseur: Ingelogd) -> 
         adviseur_id=adviseur.id,
         entiteit="klant",
         entiteit_id=klant.id,
+    )
+    db.commit()
+    return _klant_uit(db, klant, _profielcodes(db))
+
+
+@router.post("/klanten/{klant_id}/anonimiseren", response_model=KlantUit)
+def anonimiseer(klant_id: int, db: Db, adviseur: Ingelogd) -> KlantUit:
+    """Verwijdert de persoonsgegevens van een klant na afloop van de bewaartermijn.
+
+    Naam, e-mailadres, geboortedatum, beleggingsdoel en alle toelichtingen worden gewist. De
+    cijfers van profielen en portefeuilles blijven bewaard, maar zijn niet meer tot een persoon
+    te herleiden. Dit kan niet ongedaan worden gemaakt.
+    """
+    klant = _eigen_klant(db, adviseur, klant_id)
+    if klant.geanonimiseerd_op is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Deze klant is al geanonimiseerd")
+    if not klant.gearchiveerd:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Archiveer de klant eerst")
+    bewaren_tot = _bewaren_tot(db, klant)
+    if bewaren_tot is not None and bewaren_tot > date.today():
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Het adviesdossier moet bewaard blijven tot {bewaren_tot.isoformat()} "
+            f"({BEWAARTERMIJN_JAREN} jaar na het laatste advies)",
+        )
+    klant.naam = f"Geanonimiseerde klant {klant.id}"
+    klant.email = None
+    klant.geboortedatum = None
+    klant.geanonimiseerd_op = datetime.now(UTC)
+    for profiel in db.scalars(select(Klantprofiel).where(Klantprofiel.klant_id == klant.id)):
+        profiel.doel = VERWIJDERD
+        profiel.duurzaamheid_toelichting = None
+        profiel.afwijking_toelichting = VERWIJDERD if profiel.afwijking_toelichting else None
+    for portefeuille in db.scalars(select(Portefeuille).where(Portefeuille.klant_id == klant.id)):
+        if portefeuille.toelichting:
+            portefeuille.toelichting = VERWIJDERD
+        portefeuille.uitsluitingen = [
+            {**u, "reden": VERWIJDERD if u.get("reden") else ""} for u in portefeuille.uitsluitingen
+        ]
+    leg_vast(
+        db, "klant_geanonimiseerd", adviseur_id=adviseur.id, entiteit="klant", entiteit_id=klant.id
     )
     db.commit()
     return _klant_uit(db, klant, _profielcodes(db))

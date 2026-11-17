@@ -406,3 +406,113 @@ def test_uitkomst_vooraf_berekenen_slaat_niets_op(ingelogd, klant_id):
     assert ingelogd.get(f"/klanten/{klant_id}/profielen").json() == []
     r = ingelogd.post("/vragenlijst/uitkomst", json={"antwoorden": {}, "horizon_jaren": 12})
     assert r.status_code == 422
+
+
+# --- anonimiseren ----------------------------------------------------------------------
+
+
+def test_anonimiseren_na_bewaartermijn(ingelogd, db, klant_id):
+    from datetime import UTC, datetime, timedelta
+
+    from app.models import Instrument, Klant, Klantprofiel, Portefeuille, Positie
+
+    ingelogd.post(
+        f"/klanten/{klant_id}/profielen",
+        json=profiel(
+            duurzaamheid_toelichting="Geheim",
+            gekozen_risicoprofiel="neutraal",
+            afwijking_toelichting="Privé reden",
+        ),
+    )
+    pad = f"/klanten/{klant_id}/anonimiseren"
+    assert ingelogd.post(pad).status_code == 409  # nog niet gearchiveerd
+    ingelogd.put(f"/klanten/{klant_id}/archief", json={"gearchiveerd": True})
+
+    # Een advies van vier jaar geleden valt nog binnen de bewaartermijn van vijf jaar.
+    instrument = Instrument(
+        isin="IE00B4L5Y983",
+        ticker="X",
+        naam="X",
+        categorie="aandelen",
+        regio="wereld",
+        sector="breed",
+        valuta="EUR",
+        lopende_kosten=0.2,
+        uitkerend=False,
+    )
+    db.add(instrument)
+    kp = db.scalar(select(Klantprofiel).where(Klantprofiel.klant_id == klant_id))
+    vier_jaar = datetime.now(UTC) - timedelta(days=4 * 365)
+    pf = Portefeuille(
+        klant_id=klant_id,
+        versie=1,
+        vastgelegd_op=vier_jaar,
+        vastgelegd_door=kp.vastgelegd_door,
+        klantprofiel_id=kp.id,
+        risicoprofiel="neutraal",
+        banden={},
+        uitsluitingen=[{"soort": "sector", "waarde": "energie", "reden": "Privé"}],
+        doorrekening={},
+        toelichting="Geheime toelichting",
+    )
+    db.add(pf)
+    db.flush()
+    db.add(Positie(portefeuille_id=pf.id, instrument_id=instrument.id, gewicht=10000))
+    db.commit()
+    r = ingelogd.post(pad)
+    assert r.status_code == 409 and "bewaard blijven tot" in r.json()["detail"]
+    assert ingelogd.get(f"/klanten/{klant_id}").json()["bewaren_tot"] is not None
+
+    pf.vastgelegd_op = datetime.now(UTC) - timedelta(days=5 * 366)
+    db.commit()
+    r = ingelogd.post(pad)
+    assert r.status_code == 200
+    k = r.json()
+    assert k["naam"] == f"Geanonimiseerde klant {klant_id}" and k["email"] is None
+    assert k["geanonimiseerd_op"] is not None
+    assert k["huidig_profiel"]["doel"] == "[verwijderd]"
+    assert k["huidig_profiel"]["afwijking_toelichting"] == "[verwijderd]"
+    assert k["huidig_profiel"]["duurzaamheid_toelichting"] is None
+    # Cijfers blijven bewaard.
+    assert (
+        k["huidig_profiel"]["risicoprofiel"] == "neutraal"
+        and k["huidig_profiel"]["inleg_eur"] == 50000
+    )
+    db.expire_all()
+    pf = db.get(Portefeuille, pf.id)
+    assert pf.toelichting == "[verwijderd]" and pf.uitsluitingen[0]["reden"] == "[verwijderd]"
+    assert "Jan" not in db.get(Klant, klant_id).naam
+
+    assert ingelogd.post(pad).status_code == 409  # al geanonimiseerd
+    assert ingelogd.put(f"/klanten/{klant_id}", json={"naam": "Terug"}).status_code == 409
+    assert (
+        ingelogd.put(f"/klanten/{klant_id}/archief", json={"gearchiveerd": False}).status_code
+        == 409
+    )
+    regel = db.scalar(select(Logboek).where(Logboek.actie == "klant_geanonimiseerd"))
+    assert regel.entiteit_id == str(klant_id)
+
+
+def test_klant_zonder_advies_kan_direct_na_archiveren_worden_geanonimiseerd(ingelogd, klant_id):
+    ingelogd.put(f"/klanten/{klant_id}/archief", json={"gearchiveerd": True})
+    assert ingelogd.get(f"/klanten/{klant_id}").json()["bewaren_tot"] is None
+    assert ingelogd.post(f"/klanten/{klant_id}/anonimiseren").status_code == 200
+
+
+def test_anonimiseren_alleen_eigen_klant(client, ingelogd, klant_id, db):
+    ingelogd.put(f"/klanten/{klant_id}/archief", json={"gearchiveerd": True})
+    db.add(
+        Adviseur(email="ander@voorbeeld.nl", naam="A", wachtwoord_hash=hash_wachtwoord(WACHTWOORD))
+    )
+    db.commit()
+    token = client.post(
+        "/auth/login", json={"email": "ander@voorbeeld.nl", "wachtwoord": WACHTWOORD}
+    ).json()["access_token"]
+    r = client.post(
+        f"/klanten/{klant_id}/anonimiseren", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert r.status_code == 404
+    assert (
+        client.post(f"/klanten/{klant_id}/anonimiseren", headers={"Authorization": ""}).status_code
+        == 401
+    )

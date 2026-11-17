@@ -81,6 +81,10 @@ class Instrument(Basis):
     # False zolang de kosten niet tegen het actuele essentiële-informatiedocument zijn gecontroleerd.
     kosten_geverifieerd: Mapped[bool] = mapped_column(Boolean, default=False)
     uitkerend: Mapped[bool] = mapped_column(Boolean)
+    # Blootstelling aan andere valuta dan de euro: "ja", "deels", "nee" of "onbekend".
+    valutarisico: Mapped[str] = mapped_column(
+        String(10), default="onbekend", server_default="onbekend"
+    )
     startdatum: Mapped[date | None] = mapped_column(Date)
     actief: Mapped[bool] = mapped_column(Boolean, default=True)
 
@@ -144,6 +148,7 @@ class Klant(Basis):
     email: Mapped[str | None] = mapped_column(VersleuteldeTekst)
     geboortedatum: Mapped[str | None] = mapped_column(VersleuteldeTekst)  # JJJJ-MM-DD
     gearchiveerd: Mapped[bool] = mapped_column(Boolean, default=False)
+    geanonimiseerd_op: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     aangemaakt_op: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

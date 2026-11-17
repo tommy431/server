@@ -30,6 +30,7 @@ class InstrumentUit(BaseModel):
     lopende_kosten: float
     kosten_geverifieerd: bool
     uitkerend: bool
+    valutarisico: str
     startdatum: date | None
     actief: bool
 

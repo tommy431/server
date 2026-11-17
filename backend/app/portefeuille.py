@@ -51,6 +51,7 @@ class Fonds:
     lopende_kosten: float  # procenten per jaar
     kosten_geverifieerd: bool
     actief: bool = True
+    valutarisico: str = "onbekend"
 
 
 @dataclass(frozen=True)
@@ -88,6 +89,8 @@ class Doorrekening:
     aantal_instrumenten: int
     kosten_pct: float  # gewogen lopende kosten in procenten per jaar
     kosten_per_positie: dict[str, float]  # bijdrage per ISIN in procentpunten
+    # Gewicht per mate van blootstelling aan vreemde valuta: ja, deels, nee, onbekend.
+    valutarisico: dict[str, int] = field(default_factory=dict)
     bevindingen: list[Bevinding] = field(default_factory=list)
 
     @property
@@ -363,5 +366,9 @@ def reken_door(
         aantal_instrumenten=len(geldig),
         kosten_pct=round(sum(kosten_per_positie.values()), 4),
         kosten_per_positie=kosten_per_positie,
+        valutarisico={
+            soort: sum(g for i, g in geldig.items() if fondsen[i].valutarisico == soort)
+            for soort in ("ja", "deels", "nee", "onbekend")
+        },
         bevindingen=bevindingen,
     )

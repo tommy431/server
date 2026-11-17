@@ -306,3 +306,16 @@ def test_aandachtspunten_blokkeren_niet():
     # Een uitsluiting op instrument geeft geen labelwaarschuwing.
     d = reken_door(NEUTRAAL, FONDSEN, banden(), [Uitsluiting("instrument", GOUD)])
     assert d.bevindingen == []
+
+
+def test_valutarisico_per_soort():
+    fondsen = FONDSEN | {
+        WERELD: Fonds(WERELD, "W", "aandelen", "wereld", "breed", 0.2, True, valutarisico="ja"),
+        AGG: Fonds(AGG, "A", "obligaties", "wereld", "breed", 0.1, True, valutarisico="nee"),
+        EURO_AGG: Fonds(
+            EURO_AGG, "E", "obligaties", "europa", "breed", 0.16, True, valutarisico="nee"
+        ),
+    }
+    d = reken_door(NEUTRAAL, fondsen, banden(), [])
+    assert d.valutarisico == {"ja": 3900, "deels": 0, "nee": 3800, "onbekend": 2300}
+    assert sum(d.valutarisico.values()) == TOTAAL

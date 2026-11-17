@@ -113,6 +113,7 @@ class DoorrekeningUit(BaseModel):
     aantal_instrumenten: int
     kosten_pct: float
     kosten_per_positie: dict[str, float]
+    valutarisico: dict[str, int] = {}
     kosten_eur_per_jaar: int
     bevindingen: list[BevindingUit]
 
@@ -205,6 +206,7 @@ class _Context:
                 lopende_kosten=i.lopende_kosten,
                 kosten_geverifieerd=i.kosten_geverifieerd,
                 actief=i.actief,
+                valutarisico=i.valutarisico,
             )
             for i in self.instrumenten.values()
         }

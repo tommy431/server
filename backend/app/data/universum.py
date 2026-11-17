@@ -24,6 +24,7 @@ KOLOMMEN = (
     "startdatum",
 )
 _WAAR = {"ja": True, "nee": False}
+VALUTARISICO = ("ja", "deels", "nee", "onbekend")
 
 
 class UniversumFout(Exception):
@@ -48,6 +49,9 @@ def isin_geldig(isin: str) -> bool:
 
 def _lees_rij(rij: dict[str, str]) -> dict:
     waarden = {k: (rij.get(k) or "").strip() for k in KOLOMMEN}
+    valutarisico = (rij.get("valutarisico") or "onbekend").strip()
+    if valutarisico not in VALUTARISICO:
+        raise ValueError(f"'valutarisico' moet een van {', '.join(VALUTARISICO)} zijn")
     if not isin_geldig(waarden["isin"]):
         raise ValueError(f"ongeldige ISIN '{waarden['isin']}'")
     for veld in ("ticker", "naam", "valuta"):
@@ -74,6 +78,7 @@ def _lees_rij(rij: dict[str, str]) -> dict:
         "kosten_geverifieerd": _WAAR[waarden["kosten_geverifieerd"]],
         "uitkerend": _WAAR[waarden["uitkerend"]],
         "startdatum": date.fromisoformat(waarden["startdatum"]) if waarden["startdatum"] else None,
+        "valutarisico": valutarisico,
     }
 
 
