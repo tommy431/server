@@ -12,7 +12,8 @@ RUN npm run build
 
 FROM python:3.13-slim AS server
 COPY --from=ghcr.io/astral-sh/uv:0.11.32 /uv /usr/local/bin/uv
-ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy PYTHONUNBUFFERED=1
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy PYTHONUNBUFFERED=1 \
+    PATH="/app/backend/.venv/bin:$PATH"
 WORKDIR /app/backend
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
@@ -29,4 +30,6 @@ HEALTHCHECK --interval=30s --timeout=5s CMD python -c "import urllib.request; ur
 # vals IP-adres meesturen en zo de inlog- en verzoeklimieten omzeilen.
 ENV FORWARDED_ALLOW_IPS=127.0.0.1
 # Eerst migreren, dan starten. Achter een proxy met HTTPS.
-CMD ["sh", "-c", "uv run --no-sync alembic upgrade head && uv run --no-sync uvicorn app.productie:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips \"$FORWARDED_ALLOW_IPS\""]
+# Rechtstreeks uit de virtuele omgeving; uv is bij het starten niet nodig (en heeft geen
+# schrijfbare thuismap voor deze gebruiker).
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.productie:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips \"$FORWARDED_ALLOW_IPS\""]
