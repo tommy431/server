@@ -98,3 +98,14 @@ test("bedrijfsgegevens invullen en laten goedkeuren", async ({ page }) => {
   await page.getByRole("link", { name: "Onderneming" }).click();
   await expect(page.getByLabel("Naam", { exact: true })).toBeDisabled();
 });
+
+test("logboek tonen en de keten controleren", async ({ page }) => {
+  await inloggen(page, BEHEERDER_1);
+  await page.getByRole("link", { name: "Logboek" }).click();
+  await expect(page.getByRole("cell", { name: "login", exact: true }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Keten controleren" }).click();
+  await expect(page.getByRole("status")).toContainText("Het logboek is ongewijzigd");
+  await uitloggen(page);
+  await inloggen(page, ADVISEUR);
+  await expect(page.getByRole("link", { name: "Logboek" })).toHaveCount(0);
+});

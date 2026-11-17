@@ -9,6 +9,7 @@ import Klanten from "./pages/Klanten";
 import Login from "./pages/Login";
 import Account, { WachtwoordFormulier } from "./pages/Account";
 import Gebruikers from "./pages/Gebruikers";
+import Logboek from "./pages/Logboek";
 import Modelallocaties from "./pages/Modelallocaties";
 import Onderneming from "./pages/Onderneming";
 import Portefeuille from "./pages/Portefeuille";
@@ -64,6 +65,7 @@ export default function App() {
           <NavLink to="/data">Data</NavLink>
           <NavLink to="/onderneming">Onderneming</NavLink>
           {adviseur.rol === "beheerder" && <NavLink to="/gebruikers">Gebruikers</NavLink>}
+          {adviseur.rol === "beheerder" && <NavLink to="/logboek">Logboek</NavLink>}
           <NavLink to="/account">Mijn account</NavLink>
         </nav>
         <span className="wie">
@@ -89,6 +91,7 @@ export default function App() {
           <Route path="/data" element={<Data />} />
           <Route path="/onderneming" element={<Onderneming adviseur={adviseur} />} />
           {adviseur.rol === "beheerder" && <Route path="/gebruikers" element={<Gebruikers adviseur={adviseur} />} />}
+          {adviseur.rol === "beheerder" && <Route path="/logboek" element={<Logboek />} />}
           <Route path="/account" element={<Account adviseur={adviseur} naWijziging={haalAdviseur} />} />
           <Route path="*" element={<Navigate to="/klanten" replace />} />
         </Routes>

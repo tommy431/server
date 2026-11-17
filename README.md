@@ -179,6 +179,16 @@ voor de klant:
   gebruikt; foute codes tellen mee voor de blokkade na vijf mislukte pogingen.
 - Na een wachtwoordwijziging, reset of blokkade worden bestaande sessies van dat account ongeldig.
 
+## Logboek
+
+- Alle wijzigingen en inlogpogingen staan in het logboek. Elke regel bevat een SHA-256-vingerafdruk
+  van zichzelf en van de vorige regel; achteraf wijzigen, invoegen of verwijderen verbreekt de keten.
+- Controleren: in het scherm Logboek (beheerders) of op de server met
+  `uv run python -m app.cli logboek-controleren`.
+- Bewaar de laatste vingerafdruk regelmatig buiten het systeem (bijvoorbeeld maandelijks per
+  e-mail). Iemand met volledige toegang tot de database kan de keten anders in theorie helemaal
+  opnieuw opbouwen.
+
 ## Klantgegevens verwijderen
 
 Een gearchiveerde klant kan worden geanonimiseerd zodra de bewaartermijn van vijf jaar na het

@@ -62,7 +62,11 @@ class Adviseur(Basis):
 
 
 class Logboek(Basis):
-    """Wie heeft wat wanneer gedaan. Regels worden alleen toegevoegd, nooit gewijzigd."""
+    """Wie heeft wat wanneer gedaan. Regels worden alleen toegevoegd, nooit gewijzigd.
+
+    Elke regel bevat de hash van de vorige regel en een eigen hash over zijn inhoud. Een latere
+    wijziging, invoeging of verwijdering verbreekt die keten en is met `controleer_keten` aan te tonen.
+    """
 
     __tablename__ = "logboek"
 
@@ -75,6 +79,18 @@ class Logboek(Basis):
     entiteit: Mapped[str | None] = mapped_column(String(100))
     entiteit_id: Mapped[str | None] = mapped_column(String(100))
     details: Mapped[dict | None] = mapped_column(JSON)
+    vorige_hash: Mapped[str | None] = mapped_column(String(64))
+    hash: Mapped[str | None] = mapped_column(String(64))
+
+
+class LogboekKop(Basis):
+    """De laatste schakel van de logboekketen. Wordt vergrendeld bij elke nieuwe regel."""
+
+    __tablename__ = "logboek_kop"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    laatste_id: Mapped[int] = mapped_column(Integer)
+    laatste_hash: Mapped[str] = mapped_column(String(64))
 
 
 class Instrument(Basis):

@@ -78,6 +78,17 @@ def tweestaps_resetten(db: Session, args: argparse.Namespace) -> int:
     return 0
 
 
+def logboek_controleren(db: Session, args: argparse.Namespace) -> int:
+    from app.logboek import controleer_keten
+
+    c = controleer_keten(db)
+    if c.in_orde:
+        print(f"Logboek in orde: {c.aantal} regels, laatste hash {c.laatste_hash}")
+        return 0
+    print(f"LOGBOEK NIET IN ORDE bij regel {c.fout_bij}: {c.fout}", file=sys.stderr)
+    return 2
+
+
 def universum_laden(db: Session, args: argparse.Namespace) -> int:
     try:
         toegevoegd, bijgewerkt = laad_universum(db, Path(args.bestand).read_text("utf-8-sig"))
@@ -149,6 +160,9 @@ def main() -> int:
     p = sub.add_parser("tweestaps-resetten", help="Zet tweestapsverificatie van een account uit")
     p.add_argument("--email", required=True)
     p.set_defaults(func=tweestaps_resetten)
+
+    p = sub.add_parser("logboek-controleren", help="Controleer of het logboek ongewijzigd is")
+    p.set_defaults(func=logboek_controleren)
 
     p = sub.add_parser("universum-laden", help="Laad of werk de instrumentenlijst bij uit CSV")
     p.add_argument("bestand", nargs="?", default="data/universum.csv")
