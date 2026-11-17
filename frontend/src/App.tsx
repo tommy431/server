@@ -88,7 +88,7 @@ export default function App() {
           <Route path="/klanten/:id/portefeuille" element={<Portefeuille />} />
           <Route path="/modelallocaties" element={<Modelallocaties adviseur={adviseur} />} />
           <Route path="/aannames" element={<Aannames adviseur={adviseur} />} />
-          <Route path="/data" element={<Data />} />
+          <Route path="/data" element={<Data adviseur={adviseur} />} />
           <Route path="/onderneming" element={<Onderneming adviseur={adviseur} />} />
           {adviseur.rol === "beheerder" && <Route path="/gebruikers" element={<Gebruikers adviseur={adviseur} />} />}
           {adviseur.rol === "beheerder" && <Route path="/logboek" element={<Logboek />} />}

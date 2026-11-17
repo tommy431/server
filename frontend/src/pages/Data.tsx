@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { DataStatus, VerversResultaat, api, datum } from "../api";
+import { Adviseur, DataStatus, VerversResultaat, api, datum } from "../api";
 import { Fouten, meldingenVan } from "../Fouten";
 
-export default function Data() {
+export default function Data({ adviseur }: { adviseur: Adviseur }) {
   const [status, setStatus] = useState<DataStatus[] | null>(null);
   const [fouten, setFouten] = useState<string[]>([]);
   const [bezig, setBezig] = useState(false);
@@ -44,9 +44,11 @@ export default function Data() {
     <>
       <div className="kop">
         <h1>Koersdata</h1>
-        <button onClick={ververs} disabled={bezig}>
-          {bezig ? "Bezig met ophalen…" : "Koersen verversen"}
-        </button>
+        {adviseur.rol === "beheerder" && (
+          <button onClick={ververs} disabled={bezig}>
+            {bezig ? "Bezig met ophalen…" : "Koersen verversen"}
+          </button>
+        )}
       </div>
       <p className="zacht">
         Bron: Yahoo Finance (dagkoersen, gecorrigeerd voor dividend). Dit is een onofficiële bron voor het prototype;

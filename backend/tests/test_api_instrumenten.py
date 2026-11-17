@@ -103,3 +103,17 @@ def test_onbekend_instrument_en_verversen_zonder_universum(ingelogd):
     r = ingelogd.post("/instrumenten/999/koersen/import", files=upload(koersen_csv()))
     assert r.status_code == 404
     assert ingelogd.post("/data/verversen").status_code == 409
+
+
+def test_alleen_beheerder_mag_koersen_verversen(client, db):
+    from app.models import Adviseur
+    from app.security import hash_wachtwoord
+    from tests.conftest import WACHTWOORD
+
+    db.add(Adviseur(email="a@voorbeeld.nl", naam="A", wachtwoord_hash=hash_wachtwoord(WACHTWOORD)))
+    db.commit()
+    token = client.post(
+        "/auth/login", json={"email": "a@voorbeeld.nl", "wachtwoord": WACHTWOORD}
+    ).json()["access_token"]
+    r = client.post("/data/verversen", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 403

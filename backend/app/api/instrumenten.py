@@ -203,7 +203,7 @@ def data_status(db: Db, _: Ingelogd) -> list[DataStatus]:
 
 
 @router.post("/data/verversen", response_model=list[VerversResultaat])
-def verversen(db: Db, adviseur: Ingelogd) -> list[Resultaat]:
+def verversen(db: Db, adviseur: Beheerder) -> list[Resultaat]:
     if not db.scalar(select(func.count()).select_from(Instrument)):
         raise HTTPException(status.HTTP_409_CONFLICT, "Er zijn nog geen instrumenten geladen")
     resultaten = ververs_alles(db, YahooBron(), EcbBron())

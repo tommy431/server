@@ -316,3 +316,18 @@ def test_ongeldige_ondernemingsgegevens_en_rechten(ingelogd, client, db):
     kop = {"Authorization": f"Bearer {token}"}
     assert client.get("/onderneming", headers=kop).status_code == 200
     assert client.put("/onderneming", json=ONDERNEMING, headers=kop).status_code == 403
+
+
+def test_kansen_en_verlies_in_klanttaal():
+    from app.rapport import _kans, _verlies_in_euro
+
+    assert (_kans(0.0), _kans(0.004), _kans(0.32), _kans(0.996), _kans(1.0)) == (
+        "minder dan 1%",
+        "minder dan 1%",
+        "32%",
+        "meer dan 99%",
+        "meer dan 99%",
+    )
+    assert _verlies_in_euro(0.1, 100_000) == "op uw inleg is dat ongeveer € 10.000"
+    # Zonder inleg (alleen maandelijkse stortingen) geen "€ 0", maar een voorbeeld.
+    assert _verlies_in_euro(0.1, 0) == "op elke € 10.000 vermogen is dat ongeveer € 1.000"

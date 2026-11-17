@@ -487,6 +487,22 @@ def _score_tekst(soort: str, score: int) -> str:
     return teksten[0] if laag else teksten[2] if hoog else teksten[1]
 
 
+def _kans(k: float) -> str:
+    """Kans als percentage, zonder 0% of 100% te suggereren waar het om een kleine kans gaat."""
+    if k < 0.005:
+        return "minder dan 1%"
+    if k > 0.995:
+        return "meer dan 99%"
+    return f"{round(k * 100)}%"
+
+
+def _verlies_in_euro(fractie: float, inleg: float) -> str:
+    """Verlies in euro's op de inleg; zonder inleg een voorbeeld per € 10.000 vermogen."""
+    if inleg > 0:
+        return f"op uw inleg is dat ongeveer {eur(fractie * inleg)}"
+    return f"op elke € 10.000 vermogen is dat ongeveer {eur(fractie * 10_000)}"
+
+
 def _oordeel(kans: float) -> str:
     if kans >= 0.85:
         return "zeer waarschijnlijk haalbaar"
@@ -659,7 +675,7 @@ def maak_rapport(g: dict) -> bytes:
         kort.append(
             _opsom(
                 f"<b>Uw doel:</b> {eur(sc['doelvermogen'])} over {profiel['horizon_jaren']} jaar, {maatstaf}. "
-                f"De kans daarop is {round(kans_doel * 100)}%: {_oordeel(kans_doel)}."
+                f"De kans daarop is {_kans(kans_doel)}: {_oordeel(kans_doel)}."
                 + (" Zie hoofdstuk 5 voor wat helpt." if kans_doel < 0.65 else ""),
                 "samenvatting",
             )
@@ -678,8 +694,8 @@ def maak_rapport(g: dict) -> bytes:
         kort.append(
             _opsom(
                 f"<b>In een slecht jaar</b> (1 op de 20 jaren) kan uw vermogen meer dan "
-                f"{pct(-slecht_jaar, 0)} dalen; op uw inleg is dat ongeveer "
-                f"{eur(-slecht_jaar * profiel['inleg_eur'])}. Bij een zware crisis kan het meer zijn.",
+                f"{pct(-slecht_jaar, 0)} dalen; {_verlies_in_euro(-slecht_jaar, profiel['inleg_eur'])}. "
+                "Bij een zware crisis kan het meer zijn.",
                 "samenvatting",
             )
         )
@@ -716,7 +732,7 @@ def maak_rapport(g: dict) -> bytes:
         _p("1. Uw situatie en wensen", "h1"),
         _gegevens(
             [
-                ("Uw doel", _esc(profiel["doel"])),
+                ("Waarvoor u belegt", _esc(profiel["doel"])),
                 ("Looptijd", f"{profiel['horizon_jaren']} jaar"),
                 ("Inleg", eur(profiel["inleg_eur"])),
                 ("Storting per maand", eur(profiel["storting_per_maand_eur"])),
@@ -754,7 +770,7 @@ def maak_rapport(g: dict) -> bytes:
                     f"Wat betekent die keuze? Met {afgeleid.lower()} zou de middelste uitkomst ongeveer "
                     f"{eur(alt['midden'])} zijn in plaats van {eur(midden_nu)}"
                     + (
-                        f", en de kans op uw doel {round(alt['kans_doel'] * 100)}% in plaats van {round(kans_doel * 100)}%"
+                        f", en de kans op uw doel {_kans(alt['kans_doel'])} in plaats van {_kans(kans_doel)}"
                         if kans_doel is not None and alt.get("kans_doel") is not None
                         else ""
                     )
@@ -854,7 +870,7 @@ def maak_rapport(g: dict) -> bytes:
     if kans_doel is not None:
         inhoud.append(
             _opsom(
-                f"<b>Uw doel:</b> de kans op {eur(sc['doelvermogen'])} is {round(kans_doel * 100)}%, "
+                f"<b>Uw doel:</b> de kans op {eur(sc['doelvermogen'])} is {_kans(kans_doel)}, "
                 f"{_oordeel(kans_doel)}."
                 + (
                     " Dit advies past bij uw risicoprofiel, maar haalt uw doel waarschijnlijk niet; in hoofdstuk 5 staat wat helpt."
@@ -874,8 +890,9 @@ def maak_rapport(g: dict) -> bytes:
     if slecht_jaar is not None:
         inhoud.append(
             _opsom(
-                f"<b>Verliezen opvangen:</b> in een slecht jaar kan uw vermogen ongeveer "
-                f"{eur(-slecht_jaar * profiel['inleg_eur'])} dalen. {_score_tekst('capaciteit', profiel['score_capaciteit'])}"
+                f"<b>Verliezen opvangen:</b> in een slecht jaar kan uw vermogen meer dan "
+                f"{pct(-slecht_jaar, 0)} dalen; {_verlies_in_euro(-slecht_jaar, profiel['inleg_eur'])}. "
+                f"{_score_tekst('capaciteit', profiel['score_capaciteit'])}"
             )
         )
     if profiel["duurzaamheid"] != "geen" or profiel.get("uitsluitingen"):
@@ -1013,13 +1030,13 @@ def maak_rapport(g: dict) -> bytes:
             regels.append(
                 (
                     "Kans op uw doel",
-                    f"<b>{round(kans_doel * 100)}%</b> dat u {eur(sc['doelvermogen'])} haalt: {_oordeel(kans_doel)}.",
+                    f"<b>{_kans(kans_doel)}</b> dat u {eur(sc['doelvermogen'])} haalt: {_oordeel(kans_doel)}.",
                 )
             )
         regels.append(
             (
                 "Kans op minder dan u inlegt",
-                f"{round(verlies * 100)}% na {sc['horizon_jaren']} jaar.",
+                f"{_kans(verlies)} na {sc['horizon_jaren']} jaar.",
             )
         )
         inhoud += [Spacer(1, 2 * mm), _gegevens(regels)]
@@ -1043,7 +1060,7 @@ def maak_rapport(g: dict) -> bytes:
             opties.append(
                 [
                     f"{lg['horizon_jaren'] - profiel['horizon_jaren']} jaar langer beleggen ({lg['horizon_jaren']} jaar)",
-                    f"{round(lg['kans_doel'] * 100)}%" if lg.get("kans_doel") is not None else "—",
+                    f"{_kans(lg['kans_doel'])}" if lg.get("kans_doel") is not None else "—",
                     eur(lg["midden"]),
                 ]
             )
@@ -1053,7 +1070,7 @@ def maak_rapport(g: dict) -> bytes:
                     f"Risicoprofiel {naam(v['code']).lower()}"
                     + (" (volgt uit de vragenlijst)" if v.get("afgeleid") else "")
                     + f"; in een slecht jaar meer dan {pct(-v['slecht_jaar'], 0)} verlies",
-                    f"{round(v['kans_doel'] * 100)}%" if v.get("kans_doel") is not None else "—",
+                    f"{_kans(v['kans_doel'])}" if v.get("kans_doel") is not None else "—",
                     eur(v["midden"]),
                 ]
             )
@@ -1073,7 +1090,7 @@ def maak_rapport(g: dict) -> bytes:
                             f"Dit advies; in een slecht jaar meer dan {pct(-slecht_jaar, 0)} verlies"
                             if slecht_jaar is not None
                             else "Dit advies",
-                            f"{round(kans_doel * 100)}%" if kans_doel is not None else "—",
+                            f"{_kans(kans_doel)}" if kans_doel is not None else "—",
                             eur(eind[kolom][1]),
                         ]
                     ]
@@ -1101,16 +1118,16 @@ def maak_rapport(g: dict) -> bytes:
         inhoud.append(
             _p(
                 f"<b>Een slecht jaar.</b> Gemiddeld eens in de twintig jaar daalt een portefeuille als deze met "
-                f"meer dan {pct(-slecht_jaar, 0)}. Op uw inleg van {eur(profiel['inleg_eur'])} is dat ongeveer "
-                f"{eur(-slecht_jaar * profiel['inleg_eur'])}."
+                f"meer dan {pct(-slecht_jaar, 0)}; {_verlies_in_euro(-slecht_jaar, profiel['inleg_eur'])}."
             )
         )
     if su.get("crisis_rendement") is not None and su["crisis_rendement"] < 0:
         inhoud.append(
             _p(
                 f"<b>Een zware crisis.</b> In een crisis zoals die van 2008 kan de waarde in korte tijd met "
-                f"ongeveer {pct(-su['crisis_rendement'], 0)} dalen, ongeveer {eur(-su['crisis_rendement'] * profiel['inleg_eur'])} "
-                "op uw inleg. Zo'n crisis is zeldzaam, maar kan voorkomen. Na eerdere crises herstelden de "
+                f"ongeveer {pct(-su['crisis_rendement'], 0)} dalen; "
+                f"{_verlies_in_euro(-su['crisis_rendement'], profiel['inleg_eur'])}. "
+                "Zo'n crisis is zeldzaam, maar kan voorkomen. Na eerdere crises herstelden de "
                 "markten, maar dat duurde soms jaren."
             )
         )

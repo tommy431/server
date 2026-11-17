@@ -53,6 +53,19 @@ Tests:
   PostgreSQL nodig. Eenmalig: `npx playwright install chromium`, of wijs met `CHROMIUM_PAD` een
   bestaande Chromium aan.
 
+## Productie
+
+- `backend/app/productie.py` levert de API onder `/api` en de gebouwde schermen op één poort,
+  met beveiligingsheaders (Content-Security-Policy, HSTS, geen framing) en zonder openbare
+  API-documentatie. Zet er een proxy met HTTPS voor.
+- Docker: `docker build -t portefeuille .` en daarna
+  `docker run -p 8000:8000 --env-file backend/.env portefeuille`. De container migreert de
+  database bij het starten en draait niet als root.
+- Verplicht: `DATABASE_URL`, `JWT_GEHEIM` (minstens 32 tekens) en `VERSLEUTELSLEUTEL`; de server
+  weigert te starten met een zwak of ongeldig geheim.
+- Maak dagelijks een back-up van de database, en bewaar de `VERSLEUTELSLEUTEL` apart en veilig:
+  zonder die sleutel zijn klantgegevens en rapporten in de back-up onleesbaar.
+
 ## Data
 
 - **ETF-lijst:** `backend/data/universum.csv`, 40 ETF's. Aanpassen en opnieuw laden met
