@@ -79,6 +79,14 @@ def login(verzoek: LoginVerzoek, db: Db) -> TokenAntwoord:
     cfg = instellingen()
     email = verzoek.email.lower()
     sinds = datetime.now(UTC) - timedelta(minutes=cfg.login_blokkade_minuten)
+    # Na een geslaagde login begint de telling opnieuw.
+    laatste_login = db.scalar(
+        select(func.max(Logboek.tijdstip)).where(
+            Logboek.actie == "login", Logboek.entiteit_id == email, Logboek.tijdstip >= sinds
+        )
+    )
+    if laatste_login is not None:
+        sinds = laatste_login
     mislukt = db.scalar(
         select(func.count())
         .select_from(Logboek)

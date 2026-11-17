@@ -107,6 +107,7 @@ def maak(invoer: NieuwAccount, db: Db, beheerder: Beheerder) -> NieuwAccountUit:
         rol="adviseur",
         wachtwoord_hash=hash_wachtwoord(wachtwoord),
         wachtwoord_wijzigen=True,
+        tijdelijk_wachtwoord_door=beheerder.id,
     )
     db.add(account)
     db.flush()
@@ -124,6 +125,7 @@ def wachtwoord_resetten(account_id: int, db: Db, beheerder: Beheerder) -> NieuwA
     wachtwoord = tijdelijk_wachtwoord()
     account.wachtwoord_hash = hash_wachtwoord(wachtwoord)
     account.wachtwoord_wijzigen = True
+    account.tijdelijk_wachtwoord_door = beheerder.id
     account.sessie_versie += 1
     leg_vast(
         db,
@@ -190,6 +192,8 @@ def wijzig_rol(account_id: int, invoer: RolIn, db: Db, beheerder: Beheerder) -> 
     account = _ander_account(db, beheerder, account_id)
     if account.rol == invoer.rol:
         raise HTTPException(status.HTTP_409_CONFLICT, f"Dit account is al {invoer.rol}")
+    if invoer.rol == "beheerder":
+        _controleer_nieuwe_beheerder(account, beheerder)
     return dien_in(
         db,
         beheerder,
@@ -198,6 +202,24 @@ def wijzig_rol(account_id: int, invoer: RolIn, db: Db, beheerder: Beheerder) -> 
         {"rol": invoer.rol},
         {"rol": account.rol, "email": account.email},
     )
+
+
+def _controleer_nieuwe_beheerder(account: Adviseur, betrokkene: Adviseur) -> None:
+    """Voorkomt dat iemand via een zelf aangemaakt account een tweede beheerdersaccount krijgt."""
+    if account.tijdelijk_wachtwoord_door == betrokkene.id:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "U heeft het tijdelijke wachtwoord van dit account uitgegeven; een andere beheerder moet dit voorstellen en goedkeuren",
+        )
+    if account.wachtwoord_wijzigen or not account.actief:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "De adviseur moet eerst zelf inloggen en een eigen wachtwoord kiezen",
+        )
+    if instellingen().tweestaps_verplicht_beheerder and not account.tweestaps_actief:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "De adviseur moet eerst zelf tweestapsverificatie instellen"
+        )
 
 
 def _actieve_beheerders(db: Session) -> int:
@@ -213,6 +235,11 @@ def _pas_toe(db: Session, voorstel) -> int:
     account = db.get(Adviseur, int(voorstel.sleutel))
     if account is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "Het account bestaat niet meer")
+    if (
+        voorstel.inhoud.get("rol") == "beheerder"
+        and voorstel.beoordeeld_door != voorstel.voorgesteld_door
+    ):
+        _controleer_nieuwe_beheerder(account, db.get(Adviseur, voorstel.beoordeeld_door))
     nodig = 2 if instellingen().vier_ogen else 1
     verliest_beheerder = (
         account.rol == "beheerder"
@@ -238,3 +265,64 @@ def _pas_toe(db: Session, voorstel) -> int:
         details={**voorstel.inhoud, "voorstel": voorstel.id},
     )
     return account.id
+
+
+class OverdrachtIn(BaseModel):
+    naar_id: int
+
+
+@router.post("/adviseurs/{account_id}/klanten-overdragen", response_model=VoorstelUit)
+def klanten_overdragen(
+    account_id: int, invoer: OverdrachtIn, db: Db, beheerder: Beheerder
+) -> VoorstelUit:
+    """Draagt alle klanten van een adviseur over aan een andere, bijvoorbeeld bij vertrek.
+
+    Dit geeft toegang tot klantdossiers en gaat daarom via een voorstel.
+    """
+    van = db.get(Adviseur, account_id)
+    naar = db.get(Adviseur, invoer.naar_id)
+    if van is None or naar is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Account niet gevonden")
+    if van.id == naar.id:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Kies een andere adviseur")
+    if not naar.actief or naar.wachtwoord_wijzigen:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "De nieuwe adviseur moet actief zijn en een eigen wachtwoord hebben",
+        )
+    aantal = db.scalar(select(func.count()).select_from(Klant).where(Klant.adviseur_id == van.id))
+    if not aantal:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Deze adviseur heeft geen klanten")
+    return dien_in(
+        db,
+        beheerder,
+        "klantoverdracht",
+        str(van.id),
+        {"naar": naar.id, "naar_email": naar.email, "aantal": aantal},
+        {"van_email": van.email},
+    )
+
+
+@toepasser("klantoverdracht")
+def _draag_over(db: Session, voorstel) -> int:
+    from sqlalchemy import update
+
+    naar = db.get(Adviseur, voorstel.inhoud["naar"])
+    if naar is None or not naar.actief:
+        raise HTTPException(status.HTTP_409_CONFLICT, "De nieuwe adviseur is niet meer actief")
+    resultaat = db.execute(
+        update(Klant).where(Klant.adviseur_id == int(voorstel.sleutel)).values(adviseur_id=naar.id)
+    )
+    leg_vast(
+        db,
+        "klanten_overgedragen",
+        adviseur_id=voorstel.voorgesteld_door,
+        entiteit="adviseur",
+        entiteit_id=voorstel.inhoud["naar_email"],
+        details={
+            "van": voorstel.oud["van_email"],
+            "aantal": resultaat.rowcount,
+            "voorstel": voorstel.id,
+        },
+    )
+    return naar.id

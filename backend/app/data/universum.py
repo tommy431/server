@@ -49,8 +49,9 @@ def isin_geldig(isin: str) -> bool:
 
 def _lees_rij(rij: dict[str, str]) -> dict:
     waarden = {k: (rij.get(k) or "").strip() for k in KOLOMMEN}
-    valutarisico = (rij.get("valutarisico") or "onbekend").strip()
-    if valutarisico not in VALUTARISICO:
+    # Ontbreekt de kolom of de waarde, dan blijft een bestaande waarde staan (zie laad_universum).
+    valutarisico = (rij.get("valutarisico") or "").strip() or None
+    if valutarisico is not None and valutarisico not in VALUTARISICO:
         raise ValueError(f"'valutarisico' moet een van {', '.join(VALUTARISICO)} zijn")
     if not isin_geldig(waarden["isin"]):
         raise ValueError(f"ongeldige ISIN '{waarden['isin']}'")
@@ -78,8 +79,7 @@ def _lees_rij(rij: dict[str, str]) -> dict:
         "kosten_geverifieerd": _WAAR[waarden["kosten_geverifieerd"]],
         "uitkerend": _WAAR[waarden["uitkerend"]],
         "startdatum": date.fromisoformat(waarden["startdatum"]) if waarden["startdatum"] else None,
-        "valutarisico": valutarisico,
-    }
+    } | ({"valutarisico": valutarisico} if valutarisico else {})
 
 
 def laad_universum(db: Session, tekst: str) -> tuple[int, int]:

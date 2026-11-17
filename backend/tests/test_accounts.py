@@ -299,3 +299,122 @@ def test_gewone_adviseur_heeft_geen_toegang_tot_gebruikersbeheer(client, db):
         ("post", "/adviseurs/1/wachtwoord-resetten"),
     ]:
         assert client.request(methode, pad, headers=kop(token), json={}).status_code == 403, pad
+
+
+# --- herstelde fouten ------------------------------------------------------------------
+
+
+def test_geslaagde_login_zet_de_telling_van_mislukte_pogingen_terug(client, adviseur):
+    for _ in range(4):
+        login(client, adviseur.email, "fout-wachtwoord-123")
+    assert login(client, adviseur.email).status_code == 200
+    assert login(client, adviseur.email, "fout-wachtwoord-123").status_code == 401
+    assert login(client, adviseur.email).status_code == 200
+
+
+def test_zwakke_of_ongeldige_sleutels_worden_geweigerd():
+    from pydantic import ValidationError
+
+    from app.config import Instellingen
+
+    geldig = "dGVzdHNsZXV0ZWwtdGVzdHNsZXV0ZWwtdGVzdHNsZXU="
+    with pytest.raises(ValidationError, match="minstens 32 tekens"):
+        Instellingen(jwt_geheim="kort", versleutelsleutel=geldig)
+    with pytest.raises(ValidationError, match="geen geldige sleutel"):
+        Instellingen(jwt_geheim="x" * 40, versleutelsleutel="geen-sleutel")
+    assert Instellingen(jwt_geheim="x" * 40, versleutelsleutel=geldig).jwt_geheim == "x" * 40
+
+
+def test_wie_het_tijdelijke_wachtwoord_uitgaf_kan_dat_account_geen_beheerder_maken(
+    client, db, monkeypatch
+):
+    monkeypatch.setattr(instellingen(), "vier_ogen", True)
+    maak(db, "b1@voorbeeld.nl", rol="beheerder")
+    maak(db, "b2@voorbeeld.nl", rol="beheerder")
+    maak(db, "b3@voorbeeld.nl", rol="beheerder")
+    t1, t2, t3 = (login(client, f"b{i}@voorbeeld.nl").json()["access_token"] for i in (1, 2, 3))
+
+    nieuw = client.post(
+        "/adviseurs", json={"email": "stroman@voorbeeld.nl", "naam": "S"}, headers=kop(t1)
+    ).json()
+    sid, tijdelijk = nieuw["account"]["id"], nieuw["tijdelijk_wachtwoord"]
+    # Eigen account voorstellen kan niet; ook een ander kan het niet zolang het tijdelijke wachtwoord geldt.
+    r = client.put(f"/adviseurs/{sid}/rol", json={"rol": "beheerder"}, headers=kop(t1))
+    assert r.status_code == 403 and "tijdelijke wachtwoord" in r.json()["detail"]
+    r = client.put(f"/adviseurs/{sid}/rol", json={"rol": "beheerder"}, headers=kop(t2))
+    assert r.status_code == 409 and "eigen wachtwoord" in r.json()["detail"]
+
+    # B1 neemt het account zelf over (kent het tijdelijke wachtwoord) en laat B2 het voorstellen.
+    ts = login(client, "stroman@voorbeeld.nl", tijdelijk).json()["access_token"]
+    client.post(
+        "/auth/wachtwoord",
+        json={"huidig": tijdelijk, "nieuw": "overgenomen-wachtwoord"},
+        headers=kop(ts),
+    )
+    voorstel = client.put(
+        f"/adviseurs/{sid}/rol", json={"rol": "beheerder"}, headers=kop(t2)
+    ).json()
+    assert voorstel["status"] == "open"
+    # B1 mag het niet goedkeuren; B3 wel.
+    assert (
+        client.post(
+            f"/wijzigingsvoorstellen/{voorstel['id']}/goedkeuren", headers=kop(t1)
+        ).status_code
+        == 403
+    )
+    assert (
+        client.post(
+            f"/wijzigingsvoorstellen/{voorstel['id']}/goedkeuren", headers=kop(t3)
+        ).status_code
+        == 200
+    )
+
+
+def test_ook_wie_het_wachtwoord_reset_kan_dat_account_geen_beheerder_maken(client, db, monkeypatch):
+    monkeypatch.setattr(instellingen(), "vier_ogen", True)
+    maak(db, "b1@voorbeeld.nl", rol="beheerder")
+    a = maak(db, "a@voorbeeld.nl")
+    t1 = login(client, "b1@voorbeeld.nl").json()["access_token"]
+    reset = client.post(f"/adviseurs/{a.id}/wachtwoord-resetten", headers=kop(t1)).json()[
+        "tijdelijk_wachtwoord"
+    ]
+    ta = login(client, "a@voorbeeld.nl", reset).json()["access_token"]
+    client.post(
+        "/auth/wachtwoord",
+        json={"huidig": reset, "nieuw": "overgenomen-wachtwoord"},
+        headers=kop(ta),
+    )
+    r = client.put(f"/adviseurs/{a.id}/rol", json={"rol": "beheerder"}, headers=kop(t1))
+    assert r.status_code == 403
+
+
+def test_klanten_van_vertrokken_adviseur_overdragen_via_voorstel(client, db, monkeypatch):
+    from app.models import Klant
+
+    monkeypatch.setattr(instellingen(), "vier_ogen", True)
+    maak(db, "b1@voorbeeld.nl", rol="beheerder")
+    maak(db, "b2@voorbeeld.nl", rol="beheerder")
+    weg = maak(db, "weg@voorbeeld.nl")
+    opvolger = maak(db, "opvolger@voorbeeld.nl")
+    db.add_all([Klant(adviseur_id=weg.id, naam="K1"), Klant(adviseur_id=weg.id, naam="K2")])
+    db.commit()
+    t1 = login(client, "b1@voorbeeld.nl").json()["access_token"]
+    t2 = login(client, "b2@voorbeeld.nl").json()["access_token"]
+    to = login(client, "opvolger@voorbeeld.nl").json()["access_token"]
+    client.put(f"/adviseurs/{weg.id}/status", json={"actief": False}, headers=kop(t1))
+
+    pad = f"/adviseurs/{weg.id}/klanten-overdragen"
+    assert client.post(pad, json={"naar_id": weg.id}, headers=kop(t1)).status_code == 422
+    voorstel = client.post(pad, json={"naar_id": opvolger.id}, headers=kop(t1)).json()
+    assert voorstel["status"] == "open" and voorstel["inhoud"]["aantal"] == 2
+    assert client.get("/klanten", headers=kop(to)).json() == []  # nog niet
+    assert (
+        client.post(
+            f"/wijzigingsvoorstellen/{voorstel['id']}/goedkeuren", headers=kop(t2)
+        ).status_code
+        == 200
+    )
+    assert sorted(k["naam"] for k in client.get("/klanten", headers=kop(to)).json()) == ["K1", "K2"]
+    assert (
+        client.post(pad, json={"naar_id": opvolger.id}, headers=kop(t1)).status_code == 409
+    )  # niets meer over

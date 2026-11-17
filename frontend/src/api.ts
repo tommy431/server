@@ -11,7 +11,7 @@ export type Account = Adviseur & { actief: boolean; aantal_klanten: number; aang
 
 export type Voorstel = {
   id: number;
-  soort: "modelallocatie" | "aannames" | "onderneming" | "account";
+  soort: "modelallocatie" | "aannames" | "onderneming" | "account" | "klantoverdracht";
   sleutel: string | null;
   inhoud: Record<string, unknown>;
   oud: Record<string, unknown> | null;

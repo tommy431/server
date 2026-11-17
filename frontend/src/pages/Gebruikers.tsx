@@ -12,6 +12,7 @@ export default function Gebruikers({ adviseur }: { adviseur: Adviseur }) {
   const [tijdelijk, setTijdelijk] = useState<{ email: string; wachtwoord: string } | null>(null);
   const [email, setEmail] = useState("");
   const [naam, setNaam] = useState("");
+  const [overdracht, setOverdracht] = useState<Record<number, string>>({});
 
   const laad = useCallback(async () => {
     try {
@@ -80,6 +81,12 @@ export default function Gebruikers({ adviseur }: { adviseur: Adviseur }) {
         </div>
       )}
       <Voorstellen soort="account" adviseur={adviseur} verversing={verversing} naWijziging={() => setVerversing((v) => v + 1)} />
+      <Voorstellen
+        soort="klantoverdracht"
+        adviseur={adviseur}
+        verversing={verversing}
+        naWijziging={() => setVerversing((v) => v + 1)}
+      />
 
       <section className="kaart">
         <h2>Accounts</h2>
@@ -148,6 +155,40 @@ export default function Gebruikers({ adviseur }: { adviseur: Adviseur }) {
                           >
                             {a.actief ? "Blokkeren" : "Deblokkeren"}
                           </button>
+                          {a.aantal_klanten > 0 && (
+                            <span className="overdracht">
+                              <select
+                                aria-label={`Klanten van ${a.naam} overdragen aan`}
+                                value={overdracht[a.id] ?? ""}
+                                onChange={(e) => setOverdracht({ ...overdracht, [a.id]: e.target.value })}
+                              >
+                                <option value="">Klanten overdragen aan…</option>
+                                {accounts
+                                  .filter((x) => x.id !== a.id && x.actief && !x.wachtwoord_wijzigen)
+                                  .map((x) => (
+                                    <option key={x.id} value={x.id}>
+                                      {x.naam}
+                                    </option>
+                                  ))}
+                              </select>
+                              <button
+                                className="tekstknop"
+                                disabled={!overdracht[a.id]}
+                                onClick={() =>
+                                  actie(async () =>
+                                    voorstelMelding(
+                                      await api<Voorstel>(`/adviseurs/${a.id}/klanten-overdragen`, {
+                                        methode: "POST",
+                                        body: { naar_id: Number(overdracht[a.id]) },
+                                      }),
+                                    ),
+                                  )
+                                }
+                              >
+                                Overdragen
+                              </button>
+                            </span>
+                          )}
                           {a.rol === "adviseur" && (
                             <>
                               <button className="tekstknop" onClick={() => reset(a)}>

@@ -366,3 +366,22 @@ def test_kortlopende_rente_eonia_tot_oktober_2019_daarna_estr():
     )
     with pytest.raises(BronFout):
         haal_kortlopende_rente(leeg, date(2020, 1, 1))
+
+
+def test_herimport_zonder_valutakolom_laat_valutarisico_staan(db):
+    kop = UNIVERSUM_KOP.strip() + ",valutarisico\n"
+    rijen = "".join(r + ",ja\n" for r in UNIVERSUM.splitlines()[1:])
+    laad_universum(db, kop + rijen)
+    db.commit()
+    laad_universum(db, UNIVERSUM)
+    db.commit()
+    assert {i.valutarisico for i in db.scalars(select(Instrument))} == {"ja"}
+    # Een nieuw fonds zonder kolom krijgt "onbekend".
+    extra = (
+        UNIVERSUM_KOP
+        + "IE00B5BMR087,CSPX.AS,S&P 500,aandelen,noord-amerika,breed,EUR,0.07,nee,nee,\n"
+    )
+    laad_universum(db, extra)
+    db.commit()
+    nieuw = db.scalar(select(Instrument).where(Instrument.isin == "IE00B5BMR087"))
+    assert nieuw.valutarisico == "onbekend"

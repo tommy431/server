@@ -43,6 +43,9 @@ class Adviseur(Basis):
     email: Mapped[str] = mapped_column(String(254), unique=True)
     naam: Mapped[str] = mapped_column(String(200))
     wachtwoord_hash: Mapped[str] = mapped_column(String(200))
+    # Beheerder die het laatste tijdelijke wachtwoord uitgaf (bij aanmaken of resetten). Die kende
+    # het wachtwoord en mag dit account daarom niet tot beheerder voorstellen of goedkeuren.
+    tijdelijk_wachtwoord_door: Mapped[int | None] = mapped_column(ForeignKey("adviseur.id"))
     # "adviseur" of "beheerder". Alleen een beheerder wijzigt modelallocaties, aannames en fondsen.
     rol: Mapped[str] = mapped_column(String(20), default="adviseur", server_default="adviseur")
     actief: Mapped[bool] = mapped_column(Boolean, default=True)

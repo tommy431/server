@@ -674,3 +674,13 @@ main.smal {
   border-radius: 0;
   text-align: center;
 }
+
+.overdracht {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.overdracht select {
+  padding: 4px 6px;
+  font-size: 13px;
+}

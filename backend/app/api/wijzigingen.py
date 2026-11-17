@@ -68,10 +68,11 @@ def voorstel_uit(db: Session, v: Wijzigingsvoorstel) -> VoorstelUit:
 
 
 def _voer_door(db: Session, v: Wijzigingsvoorstel, beoordelaar: Adviseur) -> None:
-    v.resultaat_id = TOEPASSERS[v.soort](db, v)
-    v.status = "doorgevoerd"
+    # Eerst de beoordelaar vastleggen: een toepasser kan daarop controleren.
     v.beoordeeld_door = beoordelaar.id
     v.beoordeeld_op = datetime.now(UTC)
+    v.resultaat_id = TOEPASSERS[v.soort](db, v)
+    v.status = "doorgevoerd"
     leg_vast(
         db,
         "wijziging_doorgevoerd",
