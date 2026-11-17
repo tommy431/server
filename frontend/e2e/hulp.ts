@@ -1,3 +1,5 @@
+import { createHmac } from "node:crypto";
+
 import { Page, expect } from "@playwright/test";
 
 export const WACHTWOORD = "test-wachtwoord-e2e";
@@ -55,4 +57,18 @@ export async function geenHorizontaleScroll(page: Page) {
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   expect(overloop).toBeLessThanOrEqual(0);
+}
+
+/** Code uit een authenticator-app (RFC 6238), voor een tijdstip `verschuiving` stappen verder. */
+export function totpCode(geheim: string, verschuiving = 0): string {
+  const alfabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = "";
+  for (const teken of geheim.replace(/=+$/, "")) bits += alfabet.indexOf(teken).toString(2).padStart(5, "0");
+  const sleutel = Buffer.from(bits.match(/.{8}/g)!.map((b) => parseInt(b, 2)));
+  const teller = Buffer.alloc(8);
+  teller.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 1000 / 30) + verschuiving));
+  const hmac = createHmac("sha1", sleutel).update(teller).digest();
+  const begin = hmac[hmac.length - 1] & 0xf;
+  const getal = (hmac.readUInt32BE(begin) & 0x7fffffff) % 1_000_000;
+  return getal.toString().padStart(6, "0");
 }

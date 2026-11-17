@@ -1,8 +1,17 @@
-export type Adviseur = { id: number; email: string; naam: string; rol: "adviseur" | "beheerder" };
+export type Adviseur = {
+  id: number;
+  email: string;
+  naam: string;
+  rol: "adviseur" | "beheerder";
+  tweestaps_actief: boolean;
+  wachtwoord_wijzigen: boolean;
+};
+
+export type Account = Adviseur & { actief: boolean; aantal_klanten: number; aangemaakt_op: string };
 
 export type Voorstel = {
   id: number;
-  soort: "modelallocatie" | "aannames" | "onderneming";
+  soort: "modelallocatie" | "aannames" | "onderneming" | "account";
   sleutel: string | null;
   inhoud: Record<string, unknown>;
   oud: Record<string, unknown> | null;

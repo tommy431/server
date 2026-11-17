@@ -30,6 +30,14 @@ export const ONDERNEMINGSVELDEN: Record<string, string> = {
 };
 
 function verschillen(v: Voorstel): string[] {
+  if (v.soort === "account") {
+    const oud = (v.oud ?? {}) as Record<string, unknown>;
+    return Object.entries(v.inhoud).map(([k, w]) =>
+      k === "rol"
+        ? `Rol: ${String(oud.rol)} → ${String(w)}`
+        : `Status: ${oud.actief ? "actief" : "geblokkeerd"} → ${w ? "actief" : "geblokkeerd"}`,
+    );
+  }
   if (v.soort === "onderneming") {
     const oud = (v.oud ?? {}) as Record<string, unknown>;
     return Object.entries(v.inhoud)
@@ -126,7 +134,13 @@ export function Voorstellen({
           <div key={v.id} className="voorstel">
             <p>
               <strong>
-                {v.sleutel ? naam(v.sleutel) : v.soort === "onderneming" ? "Gegevens van de onderneming" : "Nieuwe aannames"}
+                {v.soort === "account"
+                  ? `Account ${String((v.oud as Record<string, unknown> | null)?.email ?? v.sleutel)}`
+                  : v.sleutel
+                    ? naam(v.sleutel)
+                    : v.soort === "onderneming"
+                      ? "Gegevens van de onderneming"
+                      : "Nieuwe aannames"}
               </strong>
               <span className="zacht">
                 {" "}

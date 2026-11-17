@@ -9,6 +9,9 @@ const omgeving = {
   JWT_GEHEIM: "e2e-geheim-alleen-voor-de-browsertests-0123456789",
   VERSLEUTELSLEUTEL: "ZTJlLXNsZXV0ZWwtZTJlLXNsZXV0ZWwtZTJlLXNsZXU=",
   VIER_OGEN: "true",
+  // Tweestapsverificatie voor beheerders staat uit, zodat de beheertests zonder codes kunnen.
+  // De tweestapsflow zelf wordt getest in accounts.spec.ts.
+  TWEESTAPS_VERPLICHT_BEHEERDER: "false",
 };
 
 export default defineConfig({

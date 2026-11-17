@@ -14,7 +14,7 @@ test("schermen passen op een telefoon", async ({ page }) => {
   await expect(page.getByText("In het verleden behaalde resultaten")).toBeVisible();
   await expect(page.getByText("zoals afgesproken in het klantprofiel")).toBeVisible();
   await geenHorizontaleScroll(page);
-  for (const pad of ["/modelallocaties", "/aannames", "/data", "/onderneming"]) {
+  for (const pad of ["/modelallocaties", "/aannames", "/data", "/onderneming", "/account"]) {
     await page.goto(pad);
     await page.waitForLoadState("networkidle");
     await geenHorizontaleScroll(page);

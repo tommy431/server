@@ -161,7 +161,23 @@ voor de klant:
   keurt het goed of wijst het af (met reden); de indiener kan het intrekken. Alle stappen staan in
   het logboek.
 - Is er maar één beheerder, zet dan `VIER_OGEN=false`; wijzigingen worden dan direct doorgevoerd.
-- Rollen toekennen: `uv run python -m app.cli rol-wijzigen --email ... --rol beheerder`.
+- Iemand beheerder maken, of een beheerder blokkeren of adviseur maken, gaat via een voorstel in het
+  scherm Gebruikers. Er blijven altijd minstens twee actieve beheerders over (één zonder
+  vier-ogenprincipe).
+- Beheerders kunnen adviseurs aanmaken (met een tijdelijk wachtwoord dat bij de eerste keer
+  inloggen moet worden vervangen), blokkeren en hun wachtwoord of tweestapsverificatie resetten.
+  Voor een beheerder kan dat alleen op de server: `uv run python -m app.cli tweestaps-resetten
+  --email ...`, zodat niemand via een reset de rol van een andere beheerder kan overnemen.
+- De eerste beheerder maakt u op de server aan:
+  `uv run python -m app.cli adviseur-aanmaken --email ... --naam ... --rol beheerder`.
+
+## Inloggen en tweestapsverificatie
+
+- Tweestapsverificatie met een authenticator-app (bijvoorbeeld Google of Microsoft
+  Authenticator), in te stellen onder Mijn account. Voor beheerders verplicht om beheertaken te
+  doen (`TWEESTAPS_VERPLICHT_BEHEERDER`, standaard aan). Een code kan maar één keer worden
+  gebruikt; foute codes tellen mee voor de blokkade na vijf mislukte pogingen.
+- Na een wachtwoordwijziging, reset of blokkade worden bestaande sessies van dat account ongeldig.
 
 ## Klantgegevens verwijderen
 

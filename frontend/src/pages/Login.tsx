@@ -6,6 +6,8 @@ import { Fouten, meldingenVan } from "../Fouten";
 export default function Login({ naInloggen }: { naInloggen: () => Promise<void> }) {
   const [email, setEmail] = useState("");
   const [wachtwoord, setWachtwoord] = useState("");
+  const [code, setCode] = useState("");
+  const [codeNodig, setCodeNodig] = useState(false);
   const [fouten, setFouten] = useState<string[]>([]);
   const [bezig, setBezig] = useState(false);
 
@@ -16,12 +18,18 @@ export default function Login({ naInloggen }: { naInloggen: () => Promise<void> 
     try {
       const { access_token } = await api<{ access_token: string }>("/auth/login", {
         methode: "POST",
-        body: { email, wachtwoord },
+        body: { email, wachtwoord, code: codeNodig ? code : null },
       });
       token.zet(access_token);
       await naInloggen();
     } catch (fout) {
-      setFouten(meldingenVan(fout));
+      const meldingen = meldingenVan(fout);
+      if (meldingen[0] === "tweestaps_nodig") {
+        setCodeNodig(true);
+        setFouten([]);
+      } else {
+        setFouten(meldingen);
+      }
       setBezig(false);
     }
   }
@@ -44,6 +52,20 @@ export default function Login({ naInloggen }: { naInloggen: () => Promise<void> 
           required
         />
       </label>
+      {codeNodig && (
+        <label>
+          Code uit uw authenticator-app
+          <input
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            pattern="[0-9 ]{6,7}"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            required
+            autoFocus
+          />
+        </label>
+      )}
       <button disabled={bezig}>{bezig ? "Bezig…" : "Inloggen"}</button>
     </form>
   );

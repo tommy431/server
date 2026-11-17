@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { NavLink, Navigate, Route, Routes } from "react-router-dom";
+import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 
 import { Adviseur, api, registreerUitloggen, token } from "./api";
 import Aannames from "./pages/Aannames";
@@ -7,6 +7,8 @@ import Data from "./pages/Data";
 import KlantDetail from "./pages/KlantDetail";
 import Klanten from "./pages/Klanten";
 import Login from "./pages/Login";
+import Account, { WachtwoordFormulier } from "./pages/Account";
+import Gebruikers from "./pages/Gebruikers";
 import Modelallocaties from "./pages/Modelallocaties";
 import Onderneming from "./pages/Onderneming";
 import Portefeuille from "./pages/Portefeuille";
@@ -15,10 +17,13 @@ export default function App() {
   const [adviseur, setAdviseur] = useState<Adviseur | null>(null);
   const [laden, setLaden] = useState(token.lees() !== null);
 
+  const navigeer = useNavigate();
   const uitloggen = useCallback(() => {
     token.wis();
     setAdviseur(null);
-  }, []);
+    // Na opnieuw inloggen, mogelijk door iemand anders, altijd beginnen bij de klanten.
+    navigeer("/klanten");
+  }, [navigeer]);
 
   const haalAdviseur = useCallback(async () => {
     try {
@@ -37,6 +42,16 @@ export default function App() {
 
   if (laden) return <p className="midden">Laden…</p>;
   if (!adviseur) return <Login naInloggen={haalAdviseur} />;
+  if (adviseur.wachtwoord_wijzigen) {
+    return (
+      <main className="smal">
+        <WachtwoordFormulier verplicht naWijziging={haalAdviseur} />
+        <button className="tekstknop" onClick={uitloggen}>
+          Uitloggen
+        </button>
+      </main>
+    );
+  }
 
   return (
     <>
@@ -48,6 +63,8 @@ export default function App() {
           <NavLink to="/aannames">Aannames</NavLink>
           <NavLink to="/data">Data</NavLink>
           <NavLink to="/onderneming">Onderneming</NavLink>
+          {adviseur.rol === "beheerder" && <NavLink to="/gebruikers">Gebruikers</NavLink>}
+          <NavLink to="/account">Mijn account</NavLink>
         </nav>
         <span className="wie">
           {adviseur.naam}
@@ -57,6 +74,11 @@ export default function App() {
           </button>
         </span>
       </header>
+      {adviseur.rol === "beheerder" && !adviseur.tweestaps_actief && (
+        <div className="melding let-op balkmelding">
+          Als beheerder heeft u tweestapsverificatie nodig voor beheertaken. <NavLink to="/account">Nu instellen</NavLink>
+        </div>
+      )}
       <main>
         <Routes>
           <Route path="/klanten" element={<Klanten />} />
@@ -66,6 +88,8 @@ export default function App() {
           <Route path="/aannames" element={<Aannames adviseur={adviseur} />} />
           <Route path="/data" element={<Data />} />
           <Route path="/onderneming" element={<Onderneming adviseur={adviseur} />} />
+          {adviseur.rol === "beheerder" && <Route path="/gebruikers" element={<Gebruikers adviseur={adviseur} />} />}
+          <Route path="/account" element={<Account adviseur={adviseur} naWijziging={haalAdviseur} />} />
           <Route path="*" element={<Navigate to="/klanten" replace />} />
         </Routes>
       </main>

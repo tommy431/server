@@ -15,6 +15,8 @@ class Instellingen(BaseSettings):
     # Vier-ogenprincipe: wijzigingen van modelallocaties en aannames vereisen goedkeuring door een
     # tweede beheerder. Alleen uitzetten als er maar één beheerder is.
     vier_ogen: bool = True
+    # Beheerders moeten tweestapsverificatie gebruiken voordat ze beheertaken kunnen doen.
+    tweestaps_verplicht_beheerder: bool = True
     token_geldigheid_minuten: int = 480
     max_mislukte_logins: int = 5
     login_blokkade_minuten: int = 15

@@ -24,7 +24,8 @@ def test_te_kort_wachtwoord_geweigerd():
 
 def test_token_heen_en_terug_en_vervalsing():
     token = maak_token(42)
-    assert lees_token(token) == 42
+    assert lees_token(token) == (42, 1)
+    assert lees_token(maak_token(42, 7)) == (42, 7)
     assert lees_token(token[:-2] + "xx") is None
     vervalst = jwt.encode({"sub": "42"}, "een-ander-geheim-van-voldoende-lengte-123", "HS256")
     assert lees_token(vervalst) is None
@@ -42,8 +43,10 @@ def test_login_en_mij(client, adviseur, db):
         "email": adviseur.email,
         "naam": adviseur.naam,
         "rol": "beheerder",
+        "tweestaps_actief": False,
+        "wachtwoord_wijzigen": False,
     }
-    assert "wachtwoord" not in mij.text
+    assert "hash" not in mij.text and "totp" not in mij.text
     assert db.scalars(select(Logboek.actie)).all() == ["login"]
 
 

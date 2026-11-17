@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from app.api import (
     aannames,
+    adviseurs,
     auth,
     instrumenten,
     klanten,
@@ -20,6 +21,7 @@ app.include_router(aannames.router)
 app.include_router(rapporten.router)
 app.include_router(wijzigingen.router)
 app.include_router(onderneming.router)
+app.include_router(adviseurs.router)
 
 
 @app.get("/gezondheid")

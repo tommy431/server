@@ -3,6 +3,7 @@ import os
 os.environ["JWT_GEHEIM"] = "test-geheim-alleen-voor-de-testsuite-0123456789"
 # Standaard zonder vier-ogenprincipe; tests in test_rollen.py zetten het aan.
 os.environ["VIER_OGEN"] = "false"
+os.environ["TWEESTAPS_VERPLICHT_BEHEERDER"] = "false"
 os.environ["VERSLEUTELSLEUTEL"] = "dGVzdHNsZXV0ZWwtdGVzdHNsZXV0ZWwtdGVzdHNsZXU="
 
 import pytest

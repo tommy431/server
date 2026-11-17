@@ -56,6 +56,28 @@ def rol_wijzigen(db: Session, args: argparse.Namespace) -> int:
     return 0
 
 
+def tweestaps_resetten(db: Session, args: argparse.Namespace) -> int:
+    """Voor een beheerder die zijn telefoon kwijt is; alleen met toegang tot de server."""
+    adviseur = db.scalar(select(Adviseur).where(Adviseur.email == args.email.lower()))
+    if adviseur is None:
+        print(f"Geen adviseur met {args.email}", file=sys.stderr)
+        return 1
+    adviseur.tweestaps_actief = False
+    adviseur.totp_geheim = None
+    adviseur.totp_laatste_stap = None
+    adviseur.sessie_versie += 1
+    leg_vast(
+        db,
+        "tweestaps_gereset",
+        entiteit="adviseur",
+        entiteit_id=adviseur.email,
+        details={"via": "server"},
+    )
+    db.commit()
+    print(f"Tweestapsverificatie van {adviseur.email} staat uit; stel haar opnieuw in")
+    return 0
+
+
 def universum_laden(db: Session, args: argparse.Namespace) -> int:
     try:
         toegevoegd, bijgewerkt = laad_universum(db, Path(args.bestand).read_text("utf-8-sig"))
@@ -123,6 +145,10 @@ def main() -> int:
     p.add_argument("--email", required=True)
     p.add_argument("--rol", choices=("adviseur", "beheerder"), required=True)
     p.set_defaults(func=rol_wijzigen)
+
+    p = sub.add_parser("tweestaps-resetten", help="Zet tweestapsverificatie van een account uit")
+    p.add_argument("--email", required=True)
+    p.set_defaults(func=tweestaps_resetten)
 
     p = sub.add_parser("universum-laden", help="Laad of werk de instrumentenlijst bij uit CSV")
     p.add_argument("bestand", nargs="?", default="data/universum.csv")

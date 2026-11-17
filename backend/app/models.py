@@ -46,6 +46,16 @@ class Adviseur(Basis):
     # "adviseur" of "beheerder". Alleen een beheerder wijzigt modelallocaties, aannames en fondsen.
     rol: Mapped[str] = mapped_column(String(20), default="adviseur", server_default="adviseur")
     actief: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Bij een tijdelijk wachtwoord moet de adviseur eerst een eigen wachtwoord kiezen.
+    wachtwoord_wijzigen: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    # Verhoogd bij wachtwoordwijziging of blokkeren: oudere sessies worden dan ongeldig.
+    sessie_versie: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    totp_geheim: Mapped[str | None] = mapped_column(VersleuteldeTekst)
+    tweestaps_actief: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Laatst gebruikte tijdstap, zodat een code niet twee keer kan worden gebruikt.
+    totp_laatste_stap: Mapped[int | None] = mapped_column(Integer)
     aangemaakt_op: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

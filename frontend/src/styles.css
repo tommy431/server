@@ -655,3 +655,22 @@ fieldset.kaal {
 .wie .label {
   font-size: 12px;
 }
+
+.qr svg {
+  width: 200px;
+  height: 200px;
+  background: #fff;
+}
+.acties {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 12px;
+}
+main.smal {
+  max-width: 440px;
+}
+.balkmelding {
+  margin: 0;
+  border-radius: 0;
+  text-align: center;
+}
