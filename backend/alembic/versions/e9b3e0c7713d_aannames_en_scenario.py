@@ -7,6 +7,7 @@ Create Date: 2026-11-17 04:44:40.645407
 """
 
 from collections.abc import Sequence
+from datetime import date
 
 import sqlalchemy as sa
 
@@ -45,16 +46,75 @@ def upgrade() -> None:
     )
     op.add_column("portefeuille", sa.Column("scenario", sa.JSON(), nullable=True))
     op.add_column("portefeuille", sa.Column("aannameset_id", sa.Integer(), nullable=True))
-    op.create_foreign_key(None, "portefeuille", "aannameset", ["aannameset_id"], ["id"])
+    op.create_foreign_key(
+        "portefeuille_aannameset_id_fkey", "portefeuille", "aannameset", ["aannameset_id"], ["id"]
+    )
     # ### end Alembic commands ###
 
-    from sqlalchemy.orm import Session
-
-    from app.standaarden import zaai_aannames
-
-    with Session(bind=op.get_bind()) as db:
-        zaai_aannames(db)
-        db.flush()
+    # Voorbeeldaannames, zodat een nieuwe installatie direct bruikbaar is. Alleen de kolommen die
+    # op dit moment bestaan; vastgelegd als waarden van dit moment.
+    aannameset = sa.table(
+        "aannameset",
+        sa.column("bron", sa.String),
+        sa.column("peildatum", sa.Date),
+        sa.column("categorieen", sa.JSON),
+        sa.column("correlaties", sa.JSON),
+        sa.column("inflatie", sa.Float),
+    )
+    op.bulk_insert(
+        aannameset,
+        [
+            {
+                "bron": "Voorbeeldwaarden, niet afkomstig uit een gepubliceerde bron. Vervang ze door aannames uit een erkende bron voordat ze in een advies worden gebruikt.",
+                "peildatum": date(2026, 11, 17),
+                "categorieen": {
+                    "aandelen": {"rendement": 0.065, "volatiliteit": 0.16},
+                    "obligaties": {"rendement": 0.03, "volatiliteit": 0.055},
+                    "vastgoed": {"rendement": 0.055, "volatiliteit": 0.18},
+                    "grondstoffen": {"rendement": 0.035, "volatiliteit": 0.17},
+                    "liquiditeiten": {"rendement": 0.02, "volatiliteit": 0.01},
+                },
+                "correlaties": {
+                    "aandelen": {
+                        "aandelen": 1.0,
+                        "obligaties": 0.1,
+                        "vastgoed": 0.7,
+                        "grondstoffen": 0.3,
+                        "liquiditeiten": 0.0,
+                    },
+                    "obligaties": {
+                        "aandelen": 0.1,
+                        "obligaties": 1.0,
+                        "vastgoed": 0.2,
+                        "grondstoffen": 0.0,
+                        "liquiditeiten": 0.2,
+                    },
+                    "vastgoed": {
+                        "aandelen": 0.7,
+                        "obligaties": 0.2,
+                        "vastgoed": 1.0,
+                        "grondstoffen": 0.2,
+                        "liquiditeiten": 0.0,
+                    },
+                    "grondstoffen": {
+                        "aandelen": 0.3,
+                        "obligaties": 0.0,
+                        "vastgoed": 0.2,
+                        "grondstoffen": 1.0,
+                        "liquiditeiten": 0.0,
+                    },
+                    "liquiditeiten": {
+                        "aandelen": 0.0,
+                        "obligaties": 0.2,
+                        "vastgoed": 0.0,
+                        "grondstoffen": 0.0,
+                        "liquiditeiten": 1.0,
+                    },
+                },
+                "inflatie": 0.02,
+            }
+        ],
+    )
 
 
 def downgrade() -> None:
@@ -63,7 +123,7 @@ def downgrade() -> None:
     # WARNING: constraint name is None; this directive will fail as
     # rendered.  Add a name, or use a naming convention; see
     # https://alembic.sqlalchemy.org/en/latest/naming.html
-    op.drop_constraint(None, "portefeuille", type_="foreignkey")
+    op.drop_constraint("portefeuille_aannameset_id_fkey", "portefeuille", type_="foreignkey")
     op.drop_column("portefeuille", "aannameset_id")
     op.drop_column("portefeuille", "scenario")
     op.drop_table("aannameset")

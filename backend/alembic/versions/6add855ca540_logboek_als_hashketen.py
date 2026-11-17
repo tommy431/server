@@ -33,20 +33,41 @@ def upgrade() -> None:
     op.add_column("logboek", sa.Column("hash", sa.String(length=64), nullable=True))
     # ### end Alembic commands ###
 
-    # Bestaande regels in volgorde aan de keten rijgen.
-    from sqlalchemy.orm import Session
+    # Bestaande regels in volgorde aan de keten rijgen. Met een tabeldefinitie van dit moment,
+    # zodat latere kolommen in het model deze migratie niet breken.
+    from types import SimpleNamespace
 
     from app.logboek import BEGIN, bereken_hash
-    from app.models import Logboek, LogboekKop
 
-    with Session(bind=op.get_bind()) as db:
-        vorige, laatste_id = BEGIN, 0
-        for regel in db.scalars(sa.select(Logboek).order_by(Logboek.id)):
-            regel.vorige_hash = vorige
-            regel.hash = bereken_hash(regel, vorige)
-            vorige, laatste_id = regel.hash, regel.id
-        db.add(LogboekKop(id=1, laatste_id=laatste_id, laatste_hash=vorige))
-        db.flush()
+    logboek = sa.table(
+        "logboek",
+        sa.column("id", sa.Integer),
+        sa.column("tijdstip", sa.DateTime(timezone=True)),
+        sa.column("adviseur_id", sa.Integer),
+        sa.column("actie", sa.String),
+        sa.column("entiteit", sa.String),
+        sa.column("entiteit_id", sa.String),
+        sa.column("details", sa.JSON),
+        sa.column("vorige_hash", sa.String),
+        sa.column("hash", sa.String),
+    )
+    verbinding = op.get_bind()
+    vorige, laatste_id = BEGIN, 0
+    for rij in verbinding.execute(sa.select(logboek).order_by(logboek.c.id)).mappings().all():
+        regel_hash = bereken_hash(SimpleNamespace(**rij), vorige)
+        verbinding.execute(
+            logboek.update()
+            .where(logboek.c.id == rij["id"])
+            .values(vorige_hash=vorige, hash=regel_hash)
+        )
+        vorige, laatste_id = regel_hash, rij["id"]
+    kop = sa.table(
+        "logboek_kop",
+        sa.column("id", sa.Integer),
+        sa.column("laatste_id", sa.Integer),
+        sa.column("laatste_hash", sa.String),
+    )
+    op.bulk_insert(kop, [{"id": 1, "laatste_id": laatste_id, "laatste_hash": vorige}])
 
 
 def downgrade() -> None:

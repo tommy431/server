@@ -24,7 +24,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U portefeuille"
+          --health-cmd "pg_isready -U portefeuille -d portefeuille_test"
           --health-interval 5s --health-timeout 5s --health-retries 10
     defaults:
       run:
@@ -41,8 +41,12 @@ jobs:
         run: uv run pytest -q
         env:
           TEST_DATABASE_URL: postgresql+psycopg://portefeuille:portefeuille@localhost:5432/portefeuille_test
-      - name: Migraties
-        run: uv run alembic upgrade head
+      - name: Migraties op een lege database, terug en weer vooruit
+        run: |
+          uv run alembic upgrade head
+          uv run alembic downgrade base
+          uv run alembic upgrade head
+          uv run python -m app.cli logboek-controleren
         env:
           DATABASE_URL: postgresql+psycopg://portefeuille:portefeuille@localhost:5432/portefeuille_test
           # Alleen testwaarden; geen echte geheimen.

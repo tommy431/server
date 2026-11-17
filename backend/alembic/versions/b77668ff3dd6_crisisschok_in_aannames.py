@@ -25,11 +25,16 @@ def upgrade() -> None:
     op.add_column("aannameset", sa.Column("stress", sa.JSON(), nullable=True))
     # ### end Alembic commands ###
 
-    from app.standaarden import STANDAARD_STRESS
-
+    stress = {
+        "aandelen": -0.5,
+        "obligaties": 0.05,
+        "vastgoed": -0.6,
+        "grondstoffen": -0.5,
+        "liquiditeiten": 0.01,
+    }
     op.get_bind().execute(
         sa.text("UPDATE aannameset SET stress = :s WHERE stress IS NULL").bindparams(
-            sa.bindparam("s", value=STANDAARD_STRESS, type_=sa.JSON)
+            sa.bindparam("s", value=stress, type_=sa.JSON)
         )
     )
 

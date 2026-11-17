@@ -112,13 +112,86 @@ def upgrade() -> None:
     # ### end Alembic commands ###
 
     # Standaardprofielen en -allocaties, zodat een nieuwe installatie direct bruikbaar is.
-    from sqlalchemy.orm import Session
-
-    from app.standaarden import zaai_standaarden
-
-    with Session(bind=op.get_bind()) as db:
-        zaai_standaarden(db)
-        db.flush()
+    # Vastgelegd als waarden van dit moment, onafhankelijk van latere wijzigingen in de code.
+    profielen = [
+        ("zeer-defensief", "Zeer defensief"),
+        ("defensief", "Defensief"),
+        ("neutraal", "Neutraal"),
+        ("offensief", "Offensief"),
+        ("zeer-offensief", "Zeer offensief"),
+    ]
+    allocaties = {
+        "zeer-defensief": {
+            "aandelen": (10, 0, 20),
+            "obligaties": (65, 50, 80),
+            "vastgoed": (0, 0, 5),
+            "grondstoffen": (0, 0, 5),
+            "liquiditeiten": (25, 10, 40),
+        },
+        "defensief": {
+            "aandelen": (30, 20, 40),
+            "obligaties": (55, 40, 70),
+            "vastgoed": (5, 0, 10),
+            "grondstoffen": (0, 0, 5),
+            "liquiditeiten": (10, 0, 25),
+        },
+        "neutraal": {
+            "aandelen": (50, 40, 60),
+            "obligaties": (38, 25, 50),
+            "vastgoed": (5, 0, 10),
+            "grondstoffen": (2, 0, 7),
+            "liquiditeiten": (5, 0, 15),
+        },
+        "offensief": {
+            "aandelen": (70, 60, 80),
+            "obligaties": (20, 10, 30),
+            "vastgoed": (5, 0, 10),
+            "grondstoffen": (3, 0, 8),
+            "liquiditeiten": (2, 0, 10),
+        },
+        "zeer-offensief": {
+            "aandelen": (85, 75, 95),
+            "obligaties": (5, 0, 15),
+            "vastgoed": (5, 0, 10),
+            "grondstoffen": (3, 0, 8),
+            "liquiditeiten": (2, 0, 10),
+        },
+    }
+    risicoprofiel = sa.table(
+        "risicoprofiel",
+        sa.column("id", sa.Integer),
+        sa.column("code", sa.String),
+        sa.column("naam", sa.String),
+        sa.column("niveau", sa.Integer),
+    )
+    modelallocatie = sa.table(
+        "modelallocatie",
+        sa.column("risicoprofiel_id", sa.Integer),
+        sa.column("categorie", sa.String),
+        sa.column("streef", sa.Integer),
+        sa.column("minimum", sa.Integer),
+        sa.column("maximum", sa.Integer),
+    )
+    verbinding = op.get_bind()
+    for niveau, (code, naam) in enumerate(profielen, start=1):
+        profiel_id = verbinding.execute(
+            risicoprofiel.insert()
+            .values(code=code, naam=naam, niveau=niveau)
+            .returning(risicoprofiel.c.id)
+        ).scalar_one()
+        op.bulk_insert(
+            modelallocatie,
+            [
+                {
+                    "risicoprofiel_id": profiel_id,
+                    "categorie": c,
+                    "streef": s,
+                    "minimum": lo,
+                    "maximum": hi,
+                }
+                for c, (s, lo, hi) in allocaties[code].items()
+            ],
+        )
 
 
 def downgrade() -> None:
