@@ -456,3 +456,108 @@ ul.lijst li {
     display: none;
   }
 }
+
+/* Grafiek: twee reeksen in gevalideerde kleuren; tekst blijft in tekstkleur. */
+:root {
+  --reeks-pf: #2a78d6;
+  --reeks-bm: #eb6834;
+}
+.grafiek {
+  margin: 20px 0 8px;
+}
+.grafiekvlak {
+  position: relative;
+}
+.grafiek svg {
+  display: block;
+  max-width: 100%;
+  touch-action: pan-y;
+}
+.grafiek .raster {
+  stroke: var(--rand);
+  stroke-width: 1;
+}
+.grafiek .as,
+.grafiek .eind {
+  font-size: 12px;
+  fill: var(--zacht);
+}
+.grafiek .eind {
+  fill: var(--tekst);
+  font-weight: 600;
+}
+.grafiek .lijn {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.grafiek .lijn.pf {
+  stroke: var(--reeks-pf);
+}
+.grafiek .lijn.bm {
+  stroke: var(--reeks-bm);
+}
+.grafiek .kruis {
+  stroke: var(--zacht);
+  stroke-width: 1;
+}
+.grafiek .stipje {
+  stroke: var(--vlak);
+  stroke-width: 2;
+}
+.grafiek .stipje.pf {
+  fill: var(--reeks-pf);
+}
+.grafiek .stipje.bm {
+  fill: var(--reeks-bm);
+}
+.legenda {
+  display: flex;
+  gap: 20px;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.sleutel {
+  display: inline-block;
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+.sleutel.pf {
+  background: var(--reeks-pf);
+}
+.sleutel.bm {
+  background: var(--reeks-bm);
+}
+.zweeftekst {
+  position: absolute;
+  top: 8px;
+  transform: translateX(12px);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  font-size: 13px;
+  white-space: nowrap;
+  background: var(--vlak);
+  border: 1px solid var(--rand);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.08);
+  pointer-events: none;
+}
+.zweeftekst[data-rechts="ja"] {
+  transform: translateX(calc(-100% - 12px));
+}
+.smal-tabel {
+  max-width: 420px;
+}
+.wettelijk {
+  font-weight: 600;
+  margin: 16px 0 0;
+}
+.verouderd {
+  opacity: 0.55;
+}

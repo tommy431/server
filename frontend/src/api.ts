@@ -216,3 +216,48 @@ export const pct = (bp: number) =>
   `${new Intl.NumberFormat("nl-NL", { maximumFractionDigits: 1 }).format(bp / 100)}%`;
 export const pctKosten = (p: number) =>
   `${new Intl.NumberFormat("nl-NL", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(p)}%`;
+
+export type Kengetallen = {
+  rendement_cumulatief: number;
+  rendement_per_jaar: number;
+  volatiliteit: number;
+  max_daling: number;
+  max_daling_top: string;
+  max_daling_dal: string;
+  sharpe: number | null;
+};
+export type AnalysePeriode = {
+  code: string;
+  jaren: number | null;
+  beschikbaar: boolean;
+  reden: string | null;
+  van: string | null;
+  tot: string | null;
+  portefeuille: Kengetallen | null;
+  benchmark: Kengetallen | null;
+  risicovrij_per_jaar: number | null;
+};
+export type AnalyseUitkomst = {
+  analyse: {
+    peildatum: string | null;
+    perioden: AnalysePeriode[];
+    kalenderjaren: { jaar: number; portefeuille: number; benchmark: number | null }[];
+    instrumenten: { isin: string; naam: string; eerste_koers: string; bruikbaar_vanaf: string; ingekort: boolean }[];
+    waardeverloop: [string, number, number | null][];
+    waarschuwingen: string[];
+  };
+  benchmark: { categorie: string; naam: string; gewicht: number }[];
+  risicovrij: string | null;
+};
+
+/** Fractie als percentage met teken: 0.0453 → "+4,5%". */
+export const rendement = (fractie: number, decimalen = 1) =>
+  `${new Intl.NumberFormat("nl-NL", {
+    minimumFractionDigits: decimalen,
+    maximumFractionDigits: decimalen,
+    signDisplay: "exceptZero",
+  }).format(fractie * 100)}%`;
+export const procent = (fractie: number) =>
+  `${new Intl.NumberFormat("nl-NL", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(fractie * 100)}%`;
+export const maand = (iso: string) =>
+  new Intl.DateTimeFormat("nl-NL", { month: "short", year: "numeric" }).format(new Date(iso));

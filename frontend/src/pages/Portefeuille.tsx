@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import { Analyse } from "../Analyse";
 import {
+  AnalyseUitkomst,
   Instrument,
   Klant,
   Resultaat,
@@ -67,6 +69,8 @@ export default function Portefeuille() {
   const [opgeslagen, setOpgeslagen] = useState<string | null>(null);
   const [klaar, setKlaar] = useState(false);
   const [bezig, setBezig] = useState(false);
+  const [analyse, setAnalyse] = useState<AnalyseUitkomst | null>(null);
+  const [analyseBezig, setAnalyseBezig] = useState(false);
 
   const [filter, setFilter] = useState({ categorie: "aandelen", regio: "", sector: "" });
   const [gekozen, setGekozen] = useState("");
@@ -140,6 +144,34 @@ export default function Portefeuille() {
     }, 250);
     return () => clearTimeout(timer);
   }, [gewichten, uitsluitingen, klaar, id]);
+
+  // De historische analyse volgt de doorrekening, maar alleen als de gewichten op 100% uitkomen.
+  const analyseNummer = useRef(0);
+  const totaal = resultaat?.doorrekening.totaal;
+  useEffect(() => {
+    if (!klaar || totaal !== 10000) {
+      setAnalyse(null);
+      return;
+    }
+    const nummer = ++analyseNummer.current;
+    setAnalyseBezig(true);
+    const timer = setTimeout(async () => {
+      try {
+        const uit = await api<AnalyseUitkomst>(`/klanten/${id}/portefeuille/analyse`, {
+          methode: "POST",
+          body: { posities: Object.entries(gewichten).map(([isin, gewicht]) => ({ isin, gewicht })), uitsluitingen },
+        });
+        if (nummer === analyseNummer.current) setAnalyse(uit);
+      } catch {
+        if (nummer === analyseNummer.current) setAnalyse(null);
+      } finally {
+        if (nummer === analyseNummer.current) setAnalyseBezig(false);
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+    // De doorrekening bepaalt of de gewichten geldig zijn; daarna telt alleen de samenstelling.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resultaat, klaar, id]);
 
   if (!klant || !resultaat) {
     return (
@@ -514,6 +546,19 @@ export default function Portefeuille() {
           niet bekend; die staan onder "Wereldwijd gespreid" en "Breed gespreid". Transactiekosten en kosten van de
           adviseur of bank zijn niet meegerekend.
         </p>
+      </section>
+
+      <section className="kaart">
+        <h2>Historische analyse</h2>
+        {analyse ? (
+          <div className={analyseBezig ? "verouderd" : ""}>
+            <Analyse uitkomst={analyse} />
+          </div>
+        ) : (
+          <p className="zacht">
+            {totaal === 10000 ? "Bezig met berekenen…" : "Beschikbaar zodra de gewichten optellen tot 100%."}
+          </p>
+        )}
       </section>
 
       <section className="kaart">

@@ -10,7 +10,7 @@ Webapplicatie waarmee een beleggingsadviseur een portefeuille op maat samenstelt
 | 2 | Data: ETF-lijst, koersbronnen, kwaliteitscontroles | klaar |
 | 3 | Klantprofiel, vragenlijst, risicoprofielen en eerste schermen | klaar |
 | 4 | Portefeuilleconstructie: voorstel, uitsluitingen, toetsing, versies | klaar |
-| 5 | Historische analyse | nog te bouwen |
+| 5 | Historische analyse met benchmark en grafiek | klaar |
 | 6 | Verwacht rendement (scenario's) | nog te bouwen |
 | 7 | Rapportage | nog te bouwen |
 
@@ -85,8 +85,25 @@ Tests: `uv run pytest` (SQLite in het geheugen; zet `TEST_DATABASE_URL` om tegen
   verdeling niet bekend; uitsluitingen op regio of sector en duurzaamheidswensen kunnen daarom
   niet op het niveau van de onderliggende beleggingen worden getoetst.
 
+## Historische analyse
+
+- Rendement per jaar, volatiliteit, grootste daling, Sharpe-ratio en vergelijking met een
+  benchmark over 1, 3, 5 en 10 jaar en sinds start, plus rendement per kalenderjaar.
+- Totaalrendement in euro, inclusief dividend en na lopende fondskosten (die zitten in de koers).
+  Transactiekosten en advieskosten zijn niet meegerekend.
+- De portefeuille wordt jaarlijks op de eerste handelsdag teruggebracht naar de gewichten.
+- Een periode is alleen beschikbaar als elk fonds over de hele periode koersen heeft; anders
+  wordt gemeld welk fonds de historie beperkt. Koersen van vóór een onverklaarbare koerssprong
+  van meer dan 20% worden niet gebruikt.
+- De benchmark is de strategische asset allocatie van het risicoprofiel, met één breed fonds per
+  categorie (`BENCHMARK_FONDSEN` in `backend/app/api/portefeuilles.py`). Het geldmarktfonds
+  geldt als risicovrij rendement.
+- Bij elke vastgelegde portefeuilleversie wordt de analyse bewaard zoals die toen was.
+
 ## Nog te controleren
 
+- De benchmarkfondsen zijn een voorbeeldkeuze. Voor een eerlijke vergelijking is een index of een
+  breed geaccepteerde mixbenchmark beter; daarvoor is een andere databron nodig.
 - De startselectie en de concentratiegrenzen in `backend/app/portefeuille.py` zijn
   voorbeeldwaarden en leggen een beleggingsvisie vast. Laat ze beoordelen door de adviseur.
 
