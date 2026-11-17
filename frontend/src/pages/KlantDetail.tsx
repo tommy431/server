@@ -2,7 +2,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { Allocatiebalk } from "../Allocatiebalk";
-import { Klant, Profiel, Risicoprofiel, Vragenlijst, api, datum, euro, naam } from "../api";
+import { Klant, Profiel, Rapport, Risicoprofiel, Vragenlijst, api, datum, downloadPdf, euro, naam } from "../api";
 import { Fouten, meldingenVan } from "../Fouten";
 import ProfielFormulier from "../ProfielFormulier";
 
@@ -10,6 +10,7 @@ export default function KlantDetail() {
   const id = Number(useParams().id);
   const [klant, setKlant] = useState<Klant | null>(null);
   const [geschiedenis, setGeschiedenis] = useState<Profiel[]>([]);
+  const [rapporten, setRapporten] = useState<Rapport[]>([]);
   const [vragenlijst, setVragenlijst] = useState<Vragenlijst | null>(null);
   const [risicoprofielen, setRisicoprofielen] = useState<Risicoprofiel[]>([]);
   const [formulier, setFormulier] = useState(false);
@@ -18,12 +19,14 @@ export default function KlantDetail() {
 
   const laad = useCallback(async () => {
     try {
-      const [k, g, v, r] = await Promise.all([
+      const [k, g, v, r, rp] = await Promise.all([
         api<Klant>(`/klanten/${id}`),
         api<Profiel[]>(`/klanten/${id}/profielen`),
         api<Vragenlijst>("/vragenlijst"),
         api<Risicoprofiel[]>("/risicoprofielen"),
+        api<Rapport[]>(`/klanten/${id}/rapporten`),
       ]);
+      setRapporten(rp);
       setKlant(k);
       setGeschiedenis(g);
       setVragenlijst(v);
@@ -253,6 +256,54 @@ export default function KlantDetail() {
               </button>
             )}
           </div>
+        </section>
+      )}
+
+      {rapporten.length > 0 && (
+        <section className="kaart">
+          <h2>Adviesrapporten</h2>
+          <table className="compact">
+            <thead>
+              <tr>
+                <th>Opgesteld</th>
+                <th>Portefeuilleversie</th>
+                <th>Door</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {rapporten.map((r) => (
+                <tr key={r.id}>
+                  <td>{datum(r.opgesteld_op)}</td>
+                  <td>
+                    {r.portefeuille_versie}
+                    {r.volgnummer > 1 && <span className="zacht"> (rapport {r.volgnummer})</span>}
+                  </td>
+                  <td>{r.opgesteld_door}</td>
+                  <td>
+                    {r.beschikbaar ? (
+                      <button
+                        className="tekstknop"
+                        onClick={() =>
+                          downloadPdf(
+                            `/klanten/${id}/rapporten/${r.id}/pdf`,
+                            `adviesrapport-versie-${r.portefeuille_versie}-${r.volgnummer}.pdf`,
+                          ).catch((fout) => setFouten(meldingenVan(fout)))
+                        }
+                      >
+                        Downloaden
+                      </button>
+                    ) : (
+                      <span className="zacht" title={`Vingerafdruk ${r.sha256}`}>
+                        Verwijderd bij anonimiseren
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="zacht klein-tekst">Elk rapport wordt bewaard zoals het is opgesteld.</p>
         </section>
       )}
 

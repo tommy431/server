@@ -12,7 +12,7 @@ Webapplicatie waarmee een beleggingsadviseur een portefeuille op maat samenstelt
 | 4 | Portefeuilleconstructie: voorstel, uitsluitingen, toetsing, versies | klaar |
 | 5 | Historische analyse met benchmark en grafiek | klaar |
 | 6 | Verwacht rendement: Monte Carlo-scenario's en instelbare aannames | klaar |
-| 7 | Rapportage | nog te bouwen |
+| 7 | Adviesrapport als PDF per vastgelegde versie | klaar |
 
 
 ## Starten
@@ -121,14 +121,32 @@ Tests: `uv run pytest` (SQLite in het geheugen; zet `TEST_DATABASE_URL` om tegen
   in het scherm Aannames. Elke wijziging is een nieuwe versie; elke vastgelegde portefeuille
   bewaart haar scenario en de gebruikte aannames.
 
+## Adviesrapport
+
+- Bij elke vastgelegde portefeuilleversie kan een adviesrapport (PDF) worden opgesteld: situatie
+  en wensen, risicoprofiel, portefeuille, onderbouwing, kosten, resultaten uit het verleden met
+  stresstest, scenario's met de gebruikte aannames, en risico's.
+- Het rapport wordt opgebouwd uit de momentopname van de versie en verandert dus niet als koersen,
+  aannames of modelallocaties later wijzigen.
+- Elk rapport wordt versleuteld bewaard met datum, opsteller en SHA-256-vingerafdruk. Opstellen en
+  downloaden worden vastgelegd in het logboek.
+- Zolang er voorbeeldaannames of ongecontroleerde fondskosten in zitten, staat op de eerste pagina
+  dat het een concept is.
+- Het lettertype DejaVu Sans staat in `backend/app/lettertypen` (vrije licentie, zie
+  `LICENTIE-DejaVu.txt`).
+
 ## Klantgegevens verwijderen
 
 Een gearchiveerde klant kan worden geanonimiseerd zodra de bewaartermijn van vijf jaar na het
 laatste advies is verstreken (MiFID II). Naam, e-mailadres, geboortedatum, doel en
-toelichtingen worden dan gewist; de cijfers blijven bewaard. Laat de termijn toetsen door een
+toelichtingen worden dan gewist, net als de PDF-rapporten (hun vingerafdruk blijft bewaard); de
+cijfers blijven bewaard. Laat de termijn toetsen door een
 jurist: die kan langer zijn als de AFM daarom vraagt.
 
 ## Nog te controleren
+
+- De vaste teksten in het adviesrapport (risico's, toelichtingen) zijn een eerste opzet. Laat ze
+  door compliance beoordelen, en ook of het rapport voldoet als geschiktheidsverklaring.
 
 - **De meegeleverde aannames zijn voorbeeldwaarden zonder gepubliceerde bron.** Vervang ze door
   aannames uit een erkende bron voordat de scenario's in een advies worden gebruikt. Het scherm

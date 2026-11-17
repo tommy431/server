@@ -334,3 +334,38 @@ export type AannameSet = {
   stress?: Record<string, number>;
 };
 export type AannamesUit = AannameSet & { id: number; vastgelegd_op: string };
+
+export type Rapport = {
+  id: number;
+  portefeuille_versie: number;
+  volgnummer: number;
+  opgesteld_op: string;
+  opgesteld_door: string;
+  sha256: string;
+  grootte: number;
+  beschikbaar: boolean;
+};
+
+/** Haalt een PDF op met het inlogtoken en biedt hem aan als download. */
+export async function downloadPdf(pad: string, bestandsnaam: string): Promise<void> {
+  const huidig = token.lees();
+  let antwoord: Response;
+  try {
+    antwoord = await fetch(`/api${pad}`, { headers: huidig ? { Authorization: `Bearer ${huidig}` } : {} });
+  } catch {
+    throw new ApiFout(0, ["De server is niet bereikbaar."]);
+  }
+  if (!antwoord.ok) {
+    const inhoud = await antwoord.json().catch(() => null);
+    if (antwoord.status === 401) bijUitloggen();
+    throw new ApiFout(antwoord.status, leesMeldingen(inhoud, antwoord.status));
+  }
+  const url = URL.createObjectURL(await antwoord.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = bestandsnaam;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}

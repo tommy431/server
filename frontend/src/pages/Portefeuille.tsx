@@ -5,6 +5,8 @@ import { Analyse } from "../Analyse";
 import { Scenario } from "../Scenario";
 import {
   AnalyseUitkomst,
+  Rapport,
+  downloadPdf,
   ScenarioUitkomst,
   Instrument,
   Klant,
@@ -77,6 +79,7 @@ export default function Portefeuille() {
   const [overigeKosten, setOverigeKosten] = useState("0");
   const [heffing, setHeffing] = useState("0");
   const [verlengen, setVerlengen] = useState(false);
+  const [rapportBezig, setRapportBezig] = useState<number | null>(null);
 
   const [filter, setFilter] = useState({ categorie: "aandelen", regio: "", sector: "" });
   const [gekozen, setGekozen] = useState("");
@@ -715,6 +718,29 @@ export default function Portefeuille() {
                       }}
                     >
                       Overnemen
+                    </button>
+                    <button
+                      className="tekstknop"
+                      disabled={rapportBezig !== null || klant.geanonimiseerd_op !== null}
+                      onClick={async () => {
+                        setRapportBezig(v.versie);
+                        setFouten([]);
+                        try {
+                          const r = await api<Rapport>(`/klanten/${id}/portefeuille/versies/${v.versie}/rapporten`, {
+                            methode: "POST",
+                          });
+                          await downloadPdf(
+                            `/klanten/${id}/rapporten/${r.id}/pdf`,
+                            `adviesrapport-versie-${v.versie}-${r.volgnummer}.pdf`,
+                          );
+                        } catch (fout) {
+                          setFouten(meldingenVan(fout));
+                        } finally {
+                          setRapportBezig(null);
+                        }
+                      }}
+                    >
+                      {rapportBezig === v.versie ? "Rapport maken…" : "Rapport (PDF)"}
                     </button>
                   </td>
                 </tr>
