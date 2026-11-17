@@ -1033,7 +1033,9 @@ def maak_rapport(g: dict) -> bytes:
                         [
                             f"Maandelijks {eur(st[k])} storten in plaats van {eur(profiel['storting_per_maand_eur'])}",
                             f"{round(float(k) * 100)}% ({label})",
-                            "",
+                            eur(varianten["storting_midden"][k])
+                            if k in (varianten.get("storting_midden") or {})
+                            else "",
                         ]
                     )
         if varianten.get("langer"):
@@ -1081,7 +1083,6 @@ def maak_rapport(g: dict) -> bytes:
                     {0},
                 ),
                 _p(
-                    "Bij een hogere storting is de middelste uitkomst ook hoger; die staat niet in de tabel. "
                     "Een ander risicoprofiel kiest u alleen samen met uw adviseur, als het bij u past.",
                     "klein",
                 ),

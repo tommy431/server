@@ -406,13 +406,13 @@ class _Context:
         koopkracht = p.doel_in_koopkracht
         kolom = "reeel" if koopkracht else "nominaal"
 
-        def reken(g: dict[str, float], horizon: int) -> dict:
+        def reken(g: dict[str, float], horizon: int, storting: float | None = None) -> dict:
             s = simuleer(
                 g,
                 aannames,
                 horizon_jaren=horizon,
                 inleg=p.inleg_eur,
-                storting_per_maand=p.storting_per_maand_eur,
+                storting_per_maand=p.storting_per_maand_eur if storting is None else storting,
                 kosten_pct=kosten,
                 belasting_pct=belasting,
                 doelvermogen=p.doelvermogen_eur,
@@ -444,6 +444,12 @@ class _Context:
             )
             # Afronden op hele tientjes naar boven.
             uit["storting_voor_kans"] = {str(k): -(-round(v) // 10) * 10 for k, v in nodig.items()}
+            # De middelste uitkomst bij die hogere storting, voor de vergelijking in het rapport.
+            uit["storting_midden"] = {
+                k: reken(gewichten, p.horizon_jaren, v)["midden"]
+                for k, v in uit["storting_voor_kans"].items()
+                if v > p.storting_per_maand_eur
+            }
 
         # Profielen ter vergelijking: het afgeleide profiel (als er is afgeweken) en één stap
         # defensiever. Met de streefgewichten van dat moment; kosten gelijk verondersteld.

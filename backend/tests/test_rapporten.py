@@ -206,6 +206,10 @@ def test_vastgelegde_versie_bevat_vergelijkingen_en_slecht_jaar(ingelogd, klant_
     assert [p["code"] for p in var["profielen"]] == ["defensief"]
     st = var["storting_voor_kans"]
     assert set(st) == {"0.5", "0.75"} and st["0.5"] <= st["0.75"] and st["0.5"] % 10 == 0
+    # Bij een hogere storting dan nu hoort een hogere middelste uitkomst.
+    midden_nu = v["scenario"]["jaren"][-1]["nominaal"][1]
+    for k, bedrag in var["storting_midden"].items():
+        assert st[k] > 250 and bedrag > midden_nu
     # Het live scenario rekent geen vergelijkingen door.
     posities = ingelogd.get(pad(klant_id, "versies")).json()[0]["posities"]
     live = ingelogd.post(pad(klant_id, "scenario"), json={"posities": posities}).json()
