@@ -406,3 +406,27 @@ def test_koersen_opnieuw_ophalen(ingelogd, klant_id, nep):
     )
     r = ingelogd.post(f"/klanten/{klant_id}/koersen").json()
     assert r == {"opgehaald": 1, "fouten": []}
+
+
+def test_verouderde_koers_wordt_bij_opslaan_vernieuwd(ingelogd, klant_id, client):
+    from app.api.opvolging import koersbronnen
+    from app.main import app
+
+    oud = NepBronnen(koersdatum=date.today() - timedelta(days=30))
+    app.dependency_overrides[koersbronnen] = lambda: (oud, oud)
+    apple = [
+        {
+            "omschrijving": "Apple",
+            "isin": APPLE,
+            "aantal": 10,
+            "waarde_eur": 1500,
+            "categorie": "aandelen",
+        }
+    ]
+    _bezit_overig(ingelogd, klant_id, apple)
+    nieuw = NepBronnen()
+    app.dependency_overrides[koersbronnen] = lambda: (nieuw, nieuw)
+    _bezit_overig(ingelogd, klant_id, apple)
+    _advies(ingelogd, klant_id)
+    x = ingelogd.get(f"/klanten/{klant_id}/opvolging").json()["waardering"]["overig"][0]
+    assert x["bron"] == "koers" and x["waarde"] == pytest.approx(1600)

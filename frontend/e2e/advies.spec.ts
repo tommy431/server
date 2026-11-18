@@ -78,3 +78,26 @@ test("een defensiever profiel kiezen vraagt een toelichting en blijft bij herzie
   await expect(page.getByLabel("Werken met een defensiever profiel (optioneel)")).toHaveValue("neutraal");
   await expect(page.getByLabel("Waarom wordt afgeweken?")).toHaveValue("Klant wil minder schommelingen");
 });
+
+test("duurzaamheidswensen: toets bevestigen haalt dat conceptpunt weg", async ({ page }) => {
+  test.setTimeout(120_000);
+  await inloggen(page, ADVISEUR);
+  const naam = `Duurzaam ${Date.now()}`;
+  await klantMetProfiel(page, naam);
+  await page.getByRole("button", { name: "Profiel herzien" }).click();
+  await page.getByLabel("Voorkeur voor duurzaam beleggen").selectOption("sterk");
+  await page.getByRole("button", { name: "Profiel vastleggen" }).click();
+  await expect(page.getByText(/versie 2, vastgelegd op/)).toBeVisible();
+
+  await page.getByRole("link", { name: "Portefeuille samenstellen" }).click();
+  await expect(page.getByText("past binnen het risicoprofiel")).toBeVisible();
+  const toets = page.getByLabel(/Getoetst aan de duurzaamheidswensen/);
+  await toets.fill("Alle fondsen hebben een SFDR artikel 8-label volgens het EID");
+  await page.getByRole("button", { name: "Portefeuille vastleggen" }).click();
+  await expect(page.getByText("Versie 1 is vastgelegd.")).toBeVisible();
+  await page.getByRole("button", { name: "Rapport (PDF)" }).click();
+  await page.getByRole("link", { name: `← ${naam}` }).click();
+  const rapporten = page.locator("section", { has: page.getByRole("heading", { name: "Adviesrapporten" }) });
+  await expect(rapporten.getByText(/voorbeeldaannames/)).toBeVisible();
+  await expect(rapporten.getByText(/duurzaamheidswensen/)).toHaveCount(0);
+});

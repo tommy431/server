@@ -484,3 +484,45 @@ def test_historische_stressperioden_in_analyse(ingelogd, klant_id, db):
         corona["rendement"], abs=1e-6
     )
     assert vandaag > date(2022, 12, 30)
+
+
+def test_duurzaamheid_getoetst_haalt_het_concept_weg(ingelogd, klant_id, db):
+    from app.api.rapporten import concept_redenen
+    from app.models import Portefeuille
+
+    ingelogd.post(
+        f"/klanten/{klant_id}/profielen",
+        json=profiel(antwoorden=antwoorden(2, 2), duurzaamheid="sterk", uitsluitingen=["wapens"]),
+    )
+    v = ingelogd.post(pad(klant_id, "voorstel"), json={}).json()
+    body = {"posities": v["posities"], "toelichting": "Volgens voorstel"}
+
+    # Zonder bevestiging: open aandachtspunt, dus een conceptrapport.
+    r = ingelogd.post(pad(klant_id, "versies"), json=body)
+    assert r.status_code == 201, r.text
+    p1 = db.get(Portefeuille, r.json()["id"])
+    assert any("duurzaamheidswensen" in x for x in concept_redenen(p1))
+
+    # Te korte bevestiging geweigerd.
+    assert (
+        ingelogd.post(
+            pad(klant_id, "versies"), json=body | {"duurzaamheid_getoetst": "ok"}
+        ).status_code
+        == 422
+    )
+
+    tekst = (
+        "Alle fondsen hebben een SFDR-artikel 8-label; uitsluiting wapens gecontroleerd in het EID"
+    )
+    r = ingelogd.post(pad(klant_id, "versies"), json=body | {"duurzaamheid_getoetst": tekst})
+    assert r.status_code == 201 and r.json()["duurzaamheid_getoetst"] == tekst
+    p2 = db.get(Portefeuille, r.json()["id"])
+    assert not any("duurzaamheidswensen" in x for x in concept_redenen(p2))
+    assert "duurzaamheid_getoetst" in [b["code"] for b in p2.doorrekening["bevindingen"]]
+    # Versleuteld opgeslagen.
+    from sqlalchemy import text
+
+    ruw = db.execute(
+        text("select duurzaamheid_getoetst from portefeuille where id = :i"), {"i": p2.id}
+    ).scalar()
+    assert "SFDR" not in ruw

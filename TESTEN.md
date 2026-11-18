@@ -69,8 +69,12 @@ database: `docker compose --profile app down -v` en daarna vanaf stap 2.
    voorstel goed.
 3. **Een adviseur.** Maak onder *Gebruikers* een account aan met de rol adviseur. Het tijdelijke
    wachtwoord ziet u eenmalig; de adviseur kiest bij de eerste keer inloggen een eigen wachtwoord.
-4. **Aannames.** De aannames voor het verwachte rendement zijn voorbeeldwaarden. Zolang ze niet
-   vervangen zijn, staat dat in elk rapport. Voor het testen mag u ze laten staan.
+4. **Lopende kosten.** Controleer onder *Data* de lopende kosten van de fondsen die u adviseert,
+   tegen het essentiële-informatiedocument (EID) van het fonds, en klik op *Controleren*. Zolang een
+   fonds in het advies niet gecontroleerd is, blijft het rapport een concept.
+5. **Aannames.** De aannames voor het verwachte rendement zijn voorbeeldwaarden. Zolang ze niet
+   vervangen zijn door aannames met een bron, blijft het rapport een concept. Voor het testen mag
+   u ze laten staan.
 
 ## 3. Testscenario's
 
@@ -96,6 +100,8 @@ klopt.
 - [ ] Vul de overige kosten in (bijvoorbeeld 0,5%) en leg de portefeuille vast. Download het rapport.
       *Verwacht:* een begrijpelijk rapport voor de klant; zonder ondernemingsgegevens met
       watermerk *Concept*.
+- [ ] Geef een klant duurzaamheidswensen. *Verwacht:* bij het vastleggen vraagt het programma hoe
+      u de fondsen daaraan hebt getoetst; zonder die toelichting blijft het rapport een concept.
 - [ ] Lees het rapport als klant. Is het duidelijk, eerlijk over risico's en kosten, en vindt u de
       antwoorden op uw vragen?
 
@@ -133,8 +139,8 @@ klopt.
 - **Koersen** komen van Yahoo Finance, een onofficiële bron die alleen voor persoonlijk gebruik is
   toegestaan. Voor commercieel gebruik is een betaalde gegevensleverancier nodig.
 - **Aannames** voor het verwachte rendement zijn voorbeeldwaarden zonder bron.
-- **Lopende kosten** van de fondsen zijn nog niet gecontroleerd tegen de fondsdocumentatie
-  (aangegeven met een sterretje).
+- **Lopende kosten** in de meegeleverde fondsenlijst zijn niet gecontroleerd; dat doet de
+  beheerder zelf onder *Data*.
 - Het programma verstuurt geen e-mail; een tijdelijk wachtwoord geeft u zelf door.
 - Het herbalanceringsvoorstel rekent zonder transactiekosten, spreads en belastingen.
 - Een fonds buiten de fondsenlijst kan niet in een advies worden opgenomen, alleen als overig

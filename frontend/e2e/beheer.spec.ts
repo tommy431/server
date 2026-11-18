@@ -109,3 +109,19 @@ test("logboek tonen en de keten controleren", async ({ page }) => {
   await inloggen(page, ADVISEUR);
   await expect(page.getByRole("link", { name: "Logboek" })).toHaveCount(0);
 });
+
+test("beheerder controleert de lopende kosten van een fonds", async ({ page }) => {
+  await inloggen(page, BEHEERDER_1);
+  await page.getByRole("link", { name: "Data" }).click();
+  await expect(page.getByText(/lopende kosten nog niet gecontroleerd/)).toBeVisible();
+  const rij = page.getByRole("row", { name: /Xetra-Gold/ });
+  await expect(rij.getByText("Niet gecontroleerd")).toBeVisible();
+  await rij.getByRole("button", { name: "Controleren" }).click();
+  const formulier = page.getByRole("form", { name: /Kosten controleren Xetra-Gold/ });
+  await formulier.getByLabel("Lopende kosten volgens EID (%)").fill("0,36");
+  await formulier.getByLabel("Bron").fill("EID van maart 2026");
+  await formulier.getByRole("button", { name: "Vastleggen" }).click();
+  await expect(page.getByText("Kosten van Xetra-Gold (ETC) vastgelegd als gecontroleerd.")).toBeVisible();
+  await expect(rij.getByText(/0,36%/)).toBeVisible();
+  await expect(rij.getByText(/Gecontroleerd .*\(EID van maart 2026\)/)).toBeVisible();
+});

@@ -95,6 +95,9 @@ Tests:
 - **Wisselkoersen:** ECB-referentiekoersen.
 - **Eigen koersen:** CSV met kolommen `datum,slot,slot_gecorrigeerd` via
   `POST /instrumenten/{id}/koersen/import`.
+- **Kostencontrole:** een beheerder legt onder *Data* per fonds vast dat de lopende kosten zijn
+  gecontroleerd tegen het EID, met de bron (`PUT /instrumenten/{id}/kosten`, in het logboek). Bij
+  opnieuw laden van de fondsenlijst blijft die controle staan zolang de kosten gelijk zijn.
 - **Kwaliteit:** `GET /data/status` toont per instrument de periode, de bron en bevindingen
   (gaten, koerssprongen van meer dan 20%, verouderde koersen). Bevindingen worden gemeld, niet
   stil gecorrigeerd.
@@ -124,6 +127,9 @@ Tests:
 - Regio en sector zijn labels van het instrument. Van breed gespreide fondsen is de onderliggende
   verdeling niet bekend; uitsluitingen op regio of sector en duurzaamheidswensen kunnen daarom
   niet op het niveau van de onderliggende beleggingen worden getoetst.
+- **Duurzaamheidstoets:** heeft de klant duurzaamheidswensen, dan legt de adviseur bij het
+  vastleggen vast hoe de fondsen daaraan zijn getoetst (versleuteld bewaard). Zonder die toelichting
+  blijft het rapport een concept.
 
 ## Historische analyse
 
@@ -176,7 +182,7 @@ voor de klant:
   voor 50% en 75% kans op het doel, vijf jaar langer beleggen, het profiel uit de vragenlijst en
   één profiel defensiever.
 - **Concept of definitief:** zolang er voorbeeldaannames, ongecontroleerde fondskosten of
-  ongetoetste duurzaamheidswensen zijn, is het rapport een concept met watermerk. De redenen staan
+  niet-bevestigde duurzaamheidstoets is, is het rapport een concept met watermerk. De redenen staan
   in het klantscherm, niet in de PDF.
 - Elk rapport wordt versleuteld bewaard met datum, opsteller, status en SHA-256-vingerafdruk, en is
   een momentopname van de versie.

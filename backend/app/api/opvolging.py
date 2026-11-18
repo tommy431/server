@@ -11,7 +11,7 @@ from app.api.klanten import _eigen_klant
 from app.bezitimport import MAX_TEKENS, isin_geldig, lees_bezit
 from app.config import instellingen
 from app.data.bronnen import BronFout, EcbBron, YahooBron
-from app.data.verversen import ververs_marktkoersen, wisselvaluta
+from app.data.verversen import MARKTKOERS_MAX_DAGEN, ververs_marktkoersen, wisselvaluta
 from app.logboek import leg_vast
 from app.models import (
     Adviseur,
@@ -149,9 +149,6 @@ def _laatste_koersen(db: Db) -> dict[str, tuple[date, float]]:
     # Alle fondsen noteren in euro's; een fonds in een andere valuta wordt niet gewaardeerd.
     valuta = dict(db.execute(select(Instrument.isin, Instrument.valuta)).all())
     return {isin: (d, slot) for isin, d, slot in rijen if valuta.get(isin) == "EUR"}
-
-
-MARKTKOERS_MAX_DAGEN = 10  # oudere koersen gebruiken we niet: dan geldt de opgegeven waarde
 
 
 def _koers_eur(db: Db, mk: Marktkoers) -> float | None:

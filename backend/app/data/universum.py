@@ -115,7 +115,20 @@ def laad_universum(db: Session, tekst: str) -> tuple[int, int]:
             db.add(Instrument(**waarden))
             toegevoegd += 1
         else:
+            # Een controle in het programma blijft staan zolang de kosten gelijk zijn.
+            behoud_controle = (
+                instrument.kosten_geverifieerd
+                and not waarden["kosten_geverifieerd"]
+                and instrument.lopende_kosten == waarden["lopende_kosten"]
+            )
             for veld, waarde in waarden.items():
                 setattr(instrument, veld, waarde)
+            if behoud_controle:
+                instrument.kosten_geverifieerd = True
+            elif (
+                instrument.lopende_kosten != waarden["lopende_kosten"]
+                or not waarden["kosten_geverifieerd"]
+            ):
+                instrument.kosten_gecontroleerd_op = instrument.kosten_bron = None
             bijgewerkt += 1
     return toegevoegd, bijgewerkt

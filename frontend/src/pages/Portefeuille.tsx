@@ -69,6 +69,7 @@ export default function Portefeuille() {
   const [uitsluitingen, setUitsluitingen] = useState<Uitsluiting[]>([]);
   const [resultaat, setResultaat] = useState<Resultaat | null>(null);
   const [toelichting, setToelichting] = useState("");
+  const [duurzaamGetoetst, setDuurzaamGetoetst] = useState("");
   const [fouten, setFouten] = useState<string[]>([]);
   const [opgeslagen, setOpgeslagen] = useState<string | null>(null);
   const [klaar, setKlaar] = useState(false);
@@ -222,6 +223,7 @@ export default function Portefeuille() {
   const blokkades = d.bevindingen.filter((b) => b.ernst === "fout");
   const afwijkingen = d.bevindingen.filter((b) => b.ernst === "afwijking");
   const aandachtspunten = d.bevindingen.filter((b) => b.ernst === "aandachtspunt");
+  const duurzaamheidOpen = d.bevindingen.some((b) => b.code === "duurzaamheid");
   const profielHerzien = versies.length > 0 && versies[0].klantprofiel_versie < resultaat.klantprofiel_versie;
 
   const wijzig = (nieuw: Gewichten) => {
@@ -278,10 +280,12 @@ export default function Portefeuille() {
           overige_kosten_pct: overigeKostenPct,
           belasting_pct: heffingPct,
           toelichting: toelichting || null,
+          duurzaamheid_getoetst: duurzaamheidOpen ? duurzaamGetoetst.trim() || null : null,
         },
       });
       setVersies([v, ...versies]);
       setToelichting("");
+      setDuurzaamGetoetst("");
       setOpgeslagen(`Versie ${v.versie} is vastgelegd.`);
     } catch (fout) {
       setFouten(meldingenVan(fout));
@@ -667,6 +671,17 @@ export default function Portefeuille() {
               ))}
             </ul>
           </div>
+        )}
+        {duurzaamheidOpen && (
+          <label>
+            Getoetst aan de duurzaamheidswensen: hoe? (zonder toelichting blijft het rapport een concept)
+            <textarea
+              value={duurzaamGetoetst}
+              maxLength={2000}
+              placeholder="Bijv.: alle fondsen hebben een SFDR artikel 8-label; uitsluitingen gecontroleerd in het EID"
+              onChange={(e) => setDuurzaamGetoetst(e.target.value)}
+            />
+          </label>
         )}
         <label>
           Toelichting {afwijkingen.length > 0 ? "(verplicht)" : "(optioneel)"}

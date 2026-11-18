@@ -124,6 +124,10 @@ export type DataStatus = {
   instrument_id: number;
   isin: string;
   naam: string;
+  lopende_kosten: number;
+  kosten_geverifieerd: boolean;
+  kosten_gecontroleerd_op: string | null;
+  kosten_bron: string | null;
   aantal_koersen: number;
   eerste_koers: string | null;
   laatste_koers: string | null;

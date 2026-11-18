@@ -95,6 +95,8 @@ class ScenarioIn(PortefeuilleIn):
 
 class VersieIn(ScenarioIn):
     toelichting: str | None = Field(default=None, max_length=2000)
+    # Bevestiging dat de fondsen zijn getoetst aan de duurzaamheidswensen, met hoe.
+    duurzaamheid_getoetst: str | None = Field(default=None, max_length=2000)
 
 
 class BevindingUit(BaseModel):
@@ -170,6 +172,7 @@ class VersieUit(ResultaatUit):
     versie: int
     vastgelegd_op: datetime
     toelichting: str | None
+    duurzaamheid_getoetst: str | None = None
     analyse: AnalyseUit | None
     scenario: ScenarioUit | None
 
@@ -570,6 +573,7 @@ def _versie_uit(
         versie=p.versie,
         vastgelegd_op=p.vastgelegd_op,
         toelichting=p.toelichting,
+        duurzaamheid_getoetst=p.duurzaamheid_getoetst,
         analyse=p.analyse,
         scenario=p.scenario,
         risicoprofiel=p.risicoprofiel,
@@ -624,6 +628,29 @@ def leg_vast_versie(klant_id: int, invoer: VersieIn, db: Db, adviseur: Ingelogd)
             + [b.melding for b in d.afwijkingen],
         )
 
+    doorrekening = d.als_dict()
+    getoetst = (invoer.duurzaamheid_getoetst or "").strip() or None
+    if getoetst and len(getoetst) < 10:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "Licht in een paar woorden toe hoe de fondsen aan de duurzaamheidswensen zijn getoetst",
+        )
+    if any(b["code"] == "duurzaamheid" for b in doorrekening["bevindingen"]):
+        if getoetst:
+            # Getoetst door de adviseur: geen open aandachtspunt meer (en geen conceptrapport).
+            doorrekening["bevindingen"] = [
+                {
+                    "ernst": "info",
+                    "code": "duurzaamheid_getoetst",
+                    "melding": "De adviseur heeft de fondsen getoetst aan de duurzaamheidswensen",
+                }
+                if b["code"] == "duurzaamheid"
+                else b
+                for b in doorrekening["bevindingen"]
+            ]
+    else:
+        getoetst = None
+
     scenario_uit, aannameset_id = ctx.scenario(
         db, d, invoer.overige_kosten_pct, invoer.belasting_pct, varianten=True
     )
@@ -638,11 +665,12 @@ def leg_vast_versie(klant_id: int, invoer: VersieIn, db: Db, adviseur: Ingelogd)
         risicoprofiel=ctx.risicoprofiel.code,
         banden={c: asdict(b) for c, b in ctx.banden.items()},
         uitsluitingen=[asdict(u) for u in uitsluitingen],
-        doorrekening=d.als_dict(),
+        doorrekening=doorrekening,
         analyse=ctx.analyseer(db, posities).model_dump(),
         scenario=scenario_uit.model_dump(),
         aannameset_id=aannameset_id,
         toelichting=toelichting,
+        duurzaamheid_getoetst=getoetst,
     )
     db.add(portefeuille)
     db.flush()

@@ -445,6 +445,8 @@ def anonimiseer(klant_id: int, db: Db, adviseur: Ingelogd) -> KlantUit:
     for portefeuille in db.scalars(select(Portefeuille).where(Portefeuille.klant_id == klant.id)):
         if portefeuille.toelichting:
             portefeuille.toelichting = VERWIJDERD
+        if portefeuille.duurzaamheid_getoetst:
+            portefeuille.duurzaamheid_getoetst = VERWIJDERD
         portefeuille.uitsluitingen = [
             {**u, "reden": VERWIJDERD if u.get("reden") else ""} for u in portefeuille.uitsluitingen
         ]

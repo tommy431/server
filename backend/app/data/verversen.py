@@ -11,6 +11,8 @@ from app.data.kwaliteit import Bevinding, controleer_reeks
 from app.models import Bezitsopgave, Instrument, Koers, Marktkoers, Rente, Wisselkoers
 
 BEGIN_HISTORIE = date(2005, 1, 1)
+# Een marktkoers van overig bezit die ouder is, telt niet: dan geldt de opgegeven waarde.
+MARKTKOERS_MAX_DAGEN = 10
 
 
 @dataclass
@@ -123,7 +125,12 @@ def ververs_marktkoersen(
     for isin in sorted(isins):
         r = Resultaat(isin)
         rij = db.get(Marktkoers, isin)
-        if rij is not None and alleen_ontbrekend and rij.koers is not None:
+        recent = (
+            rij is not None
+            and rij.datum is not None
+            and (date.today() - rij.datum).days <= MARKTKOERS_MAX_DAGEN
+        )
+        if alleen_ontbrekend and recent and rij.koers is not None:
             continue
         try:
             if rij is None or rij.symbool is None:

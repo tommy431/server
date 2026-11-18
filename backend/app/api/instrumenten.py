@@ -1,7 +1,7 @@
 from datetime import date
 
 from fastapi import APIRouter, HTTPException, UploadFile, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 
 from app.api.afhankelijkheden import Beheerder, Db, Ingelogd
@@ -52,10 +52,19 @@ class BevindingUit(BaseModel):
     melding: str
 
 
+class KostenIn(BaseModel):
+    lopende_kosten: float = Field(ge=0, le=5)
+    bron: str = Field(min_length=3, max_length=300)
+
+
 class DataStatus(BaseModel):
     instrument_id: int
     isin: str
     naam: str
+    lopende_kosten: float
+    kosten_geverifieerd: bool
+    kosten_gecontroleerd_op: date | None
+    kosten_bron: str | None
     aantal_koersen: int
     eerste_koers: date | None
     laatste_koers: date | None
@@ -190,6 +199,10 @@ def data_status(db: Db, _: Ingelogd) -> list[DataStatus]:
                 instrument_id=instrument.id,
                 isin=instrument.isin,
                 naam=instrument.naam,
+                lopende_kosten=instrument.lopende_kosten,
+                kosten_geverifieerd=instrument.kosten_geverifieerd,
+                kosten_gecontroleerd_op=instrument.kosten_gecontroleerd_op,
+                kosten_bron=instrument.kosten_bron,
                 aantal_koersen=len(rijen),
                 eerste_koers=rijen[0].datum if rijen else None,
                 laatste_koers=rijen[-1].datum if rijen else None,
@@ -200,6 +213,29 @@ def data_status(db: Db, _: Ingelogd) -> list[DataStatus]:
             )
         )
     return uit
+
+
+@router.put("/instrumenten/{instrument_id}/kosten", response_model=DataStatus)
+def kosten_controleren(
+    instrument_id: int, invoer: KostenIn, db: Db, adviseur: Beheerder
+) -> DataStatus:
+    """Legt vast dat de lopende kosten zijn gecontroleerd tegen de fondsdocumentatie."""
+    instrument = _instrument(db, instrument_id)
+    oud = instrument.lopende_kosten
+    instrument.lopende_kosten = round(invoer.lopende_kosten, 4)
+    instrument.kosten_geverifieerd = True
+    instrument.kosten_gecontroleerd_op = date.today()
+    instrument.kosten_bron = invoer.bron.strip()
+    leg_vast(
+        db,
+        "kosten_gecontroleerd",
+        adviseur_id=adviseur.id,
+        entiteit="instrument",
+        entiteit_id=instrument.isin,
+        details={"oud": oud, "nieuw": instrument.lopende_kosten, "bron": instrument.kosten_bron},
+    )
+    db.commit()
+    return next(s for s in data_status(db, adviseur) if s.instrument_id == instrument.id)
 
 
 @router.post("/data/verversen", response_model=list[VerversResultaat])

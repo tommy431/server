@@ -69,6 +69,10 @@ def test_koersen_importeren_opvragen_en_status(ingelogd):
         "instrument_id": 0,
         "isin": wereld["isin"],
         "naam": "",
+        "lopende_kosten": 0.2,
+        "kosten_geverifieerd": False,
+        "kosten_gecontroleerd_op": None,
+        "kosten_bron": None,
         "aantal_koersen": 5,
         "eerste_koers": str(vandaag - timedelta(days=4)),
         "laatste_koers": str(vandaag),
@@ -116,4 +120,66 @@ def test_alleen_beheerder_mag_koersen_verversen(client, db):
         "/auth/login", json={"email": "a@voorbeeld.nl", "wachtwoord": WACHTWOORD}
     ).json()["access_token"]
     r = client.post("/data/verversen", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 403
+
+
+def _status(ingelogd, isin):
+    return next(s for s in ingelogd.get("/data/status").json() if s["isin"] == isin)
+
+
+def test_kosten_controleren_en_behouden_bij_opnieuw_laden(ingelogd, db):
+    ingelogd.post("/instrumenten/import", files=upload(UNIVERSUM))
+    wereld = _status(ingelogd, "IE00B4L5Y983")
+    assert (wereld["lopende_kosten"], wereld["kosten_geverifieerd"]) == (0.2, False)
+
+    r = ingelogd.put(
+        f"/instrumenten/{wereld['instrument_id']}/kosten",
+        json={"lopende_kosten": 0.2, "bron": "EID maart 2026"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["kosten_geverifieerd"] is True
+    assert r.json()["kosten_gecontroleerd_op"] == date.today().isoformat()
+    regel = db.scalar(select(Logboek).where(Logboek.actie == "kosten_gecontroleerd"))
+    assert regel.details == {"oud": 0.2, "nieuw": 0.2, "bron": "EID maart 2026"}
+
+    # Opnieuw laden met dezelfde kosten: de controle blijft staan.
+    ingelogd.post("/instrumenten/import", files=upload(UNIVERSUM))
+    assert _status(ingelogd, "IE00B4L5Y983")["kosten_geverifieerd"] is True
+    # Met andere kosten in het bestand: niet meer gecontroleerd.
+    ingelogd.post(
+        "/instrumenten/import", files=upload(UNIVERSUM.replace(",0.20,nee,", ",0.22,nee,"))
+    )
+    s = _status(ingelogd, "IE00B4L5Y983")
+    assert (s["lopende_kosten"], s["kosten_geverifieerd"], s["kosten_bron"]) == (0.22, False, None)
+
+
+def test_kosten_controleren_alleen_beheerder_en_met_bron(client, ingelogd, db):
+    from app.models import Adviseur
+    from app.security import hash_wachtwoord
+    from tests.conftest import WACHTWOORD
+
+    ingelogd.post("/instrumenten/import", files=upload(UNIVERSUM))
+    iid = _status(ingelogd, "IE00B4L5Y983")["instrument_id"]
+    assert (
+        ingelogd.put(
+            f"/instrumenten/{iid}/kosten", json={"lopende_kosten": 0.2, "bron": ""}
+        ).status_code
+        == 422
+    )
+    assert (
+        ingelogd.put(
+            f"/instrumenten/{iid}/kosten", json={"lopende_kosten": -1, "bron": "EID"}
+        ).status_code
+        == 422
+    )
+    db.add(Adviseur(email="a@voorbeeld.nl", naam="A", wachtwoord_hash=hash_wachtwoord(WACHTWOORD)))
+    db.commit()
+    token = client.post(
+        "/auth/login", json={"email": "a@voorbeeld.nl", "wachtwoord": WACHTWOORD}
+    ).json()["access_token"]
+    r = client.put(
+        f"/instrumenten/{iid}/kosten",
+        json={"lopende_kosten": 0.2, "bron": "EID"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert r.status_code == 403

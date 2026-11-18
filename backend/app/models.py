@@ -111,6 +111,9 @@ class Instrument(Basis):
     lopende_kosten: Mapped[float] = mapped_column(Float)
     # False zolang de kosten niet tegen het actuele essentiële-informatiedocument zijn gecontroleerd.
     kosten_geverifieerd: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Vastgelegd bij een controle in het programma: wanneer en waartegen (bijv. "EID 2026-03").
+    kosten_gecontroleerd_op: Mapped[date | None] = mapped_column(Date)
+    kosten_bron: Mapped[str | None] = mapped_column(String(300))
     uitkerend: Mapped[bool] = mapped_column(Boolean)
     # Blootstelling aan andere valuta dan de euro: "ja", "deels", "nee" of "onbekend".
     valutarisico: Mapped[str] = mapped_column(
@@ -268,6 +271,8 @@ class Portefeuille(Basis):
     scenario: Mapped[dict | None] = mapped_column(JSON)
     aannameset_id: Mapped[int | None] = mapped_column(ForeignKey("aannameset.id"))
     toelichting: Mapped[str | None] = mapped_column(VersleuteldeTekst)
+    # Hoe de adviseur de fondsen heeft getoetst aan de duurzaamheidswensen van de klant.
+    duurzaamheid_getoetst: Mapped[str | None] = mapped_column(VersleuteldeTekst)
 
 
 class Positie(Basis):
