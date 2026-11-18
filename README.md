@@ -192,7 +192,14 @@ Via **Opvolging** bij een klant, en het overzicht **Signalen** in het menu.
   aantal aan een kolomkop als ‘Aantal’, ‘Stukken’ of ‘Quantity’. Scheidingsteken (; , of tab),
   decimaalteken en tekenset (UTF-8 of Windows-1252) worden per bestand bepaald. Regels zonder ISIN
   (totalen, geldsaldo) worden overgeslagen, dubbele fondsen opgeteld, en fondsen buiten de
-  fondsenlijst gemeld. Het geldsaldo vult de adviseur zelf in.
+  fondsenlijst als overig bezit voorgesteld (met omschrijving en, als de export een waardekolom
+  heeft, de waarde). Het geldsaldo vult de adviseur zelf in.
+- **Overig bezit:** beleggingen buiten de fondsenlijst (losse aandelen, andere fondsen) met een
+  omschrijving, optioneel ISIN, beleggingscategorie en de waarde van het depotoverzicht. Ze tellen
+  mee in het vermogen en de verdeling over categorieën. In het herbalanceringsvoorstel worden ze in
+  zijn geheel verkocht tegen de opgegeven waarde (aangeduid als schatting), tenzij ‘Behouden’ is
+  aangevinkt: dan blijven ze staan, gelden de gewichten van het advies voor de rest van het vermogen
+  en volgt er geen signaal.
 - **Vergelijking met het advies:** per fonds het werkelijke gewicht naast het geadviseerde, en per
   beleggingscategorie het gewicht tegen de bandbreedtes van de laatst vastgelegde portefeuilleversie.
 - **Herbalanceringsvoorstel:** terug naar de gewichten van het advies, in hele stukken. Eerst

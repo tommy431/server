@@ -25,12 +25,29 @@ _AANTAL_KOPPEN = (
     "nominaal",
     "positie",
 )
+# Kolomkoppen voor de waarde in euro's; nodig voor bezit buiten de fondsenlijst.
+_WAARDE_KOPPEN = (
+    "waarde",
+    "waarde eur",
+    "waarde (eur)",
+    "waarde in eur",
+    "marktwaarde",
+    "actuele waarde",
+    "value",
+    "market value",
+    "value eur",
+    "value (eur)",
+)
 
 
 @dataclass
 class Inleesresultaat:
     posities: dict[str, float] = field(default_factory=dict)
     meldingen: list[str] = field(default_factory=list)
+    omschrijvingen: dict[str, str] = field(default_factory=dict)
+    waarden: dict[str, float | None] = field(
+        default_factory=dict
+    )  # alleen als er een waardekolom is
 
 
 def isin_geldig(isin: str) -> bool:
@@ -129,6 +146,8 @@ def lees_bezit(tekst: str) -> Inleesresultaat:
         )
         return uit
 
+    koppen = [c.strip().lower() for c in rijen[kop_index]]
+    waarde_kolom = next((koppen.index(k) for k in _WAARDE_KOPPEN if k in koppen), None)
     decimaal = _decimaalteken(rijen[kop_index + 1 :], scheiding)
     zonder_isin, ongeldig, dubbel = 0, [], set()
     for rij in rijen[kop_index + 1 :]:
@@ -152,6 +171,12 @@ def lees_bezit(tekst: str) -> Inleesresultaat:
         if isin in uit.posities:
             dubbel.add(isin)
         uit.posities[isin] = uit.posities.get(isin, 0.0) + aantal
+        if isin not in uit.omschrijvingen:
+            uit.omschrijvingen[isin] = _omschrijving(rij, isin, decimaal) or isin
+        if waarde_kolom is not None:
+            w = lees_getal(rij[waarde_kolom], decimaal) if waarde_kolom < len(rij) else None
+            vorige = uit.waarden.get(isin, 0.0)
+            uit.waarden[isin] = None if w is None or vorige is None else vorige + w
 
     for isin in sorted(dubbel):
         uit.meldingen.append(f"{isin} kwam meerdere keren voor; de aantallen zijn opgeteld")
@@ -164,3 +189,14 @@ def lees_bezit(tekst: str) -> Inleesresultaat:
     if not uit.posities and not uit.meldingen:
         uit.meldingen.append("Geen posities gevonden")
     return uit
+
+
+def _omschrijving(rij: list[str], isin: str, decimaal: str) -> str:
+    """De eerste tekstcel van de regel die geen getal is, zonder het ISIN."""
+    for c in rij:
+        t = re.sub(r"[\s(\[]*" + isin + r"[)\]]*", " ", c.strip(), flags=re.IGNORECASE).strip(
+            " -–:"
+        )
+        if t and lees_getal(t, decimaal) is None and not re.fullmatch(r"[\d\-/.]+", t):
+            return t[:200]
+    return ""

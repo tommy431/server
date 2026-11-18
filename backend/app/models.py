@@ -391,6 +391,8 @@ class Bezitsopgave(Basis):
     peildatum: Mapped[date] = mapped_column(Date)
     posities: Mapped[dict] = mapped_column(JSON)  # ISIN → aantal stukken
     kas_eur: Mapped[float] = mapped_column(Float)
+    # Bezit buiten de fondsenlijst: [{omschrijving, isin, categorie, waarde, behouden}].
+    overig: Mapped[list | None] = mapped_column(JSON)
     vastgelegd_door: Mapped[int] = mapped_column(ForeignKey("adviseur.id"))
     vastgelegd_op: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

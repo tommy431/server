@@ -699,3 +699,44 @@ main.smal {
     display: none;
   }
 }
+.overig-regel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+  border: 1px solid var(--rand);
+  border-radius: 6px;
+  padding: 8px 12px 12px;
+  margin: 0 0 10px;
+}
+.overig-regel input.isin {
+  width: 9em;
+}
+.overig-regel input.klein-bedrag {
+  width: 8em;
+}
+.overig-regel .vinkje {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 8px;
+}
+.bezit-tabel {
+  width: 100%;
+  table-layout: fixed;
+}
+.bezit-tabel select {
+  width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+.bezit-tabel input {
+  width: 100%;
+}
+.bezit-tabel .aantal-kolom {
+  width: 6.5em;
+}
+.bezit-tabel .verwijder-kolom {
+  width: 5.5em;
+}

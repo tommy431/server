@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from app.opvolging import _plus_maanden, herbalanceer, signalen, waardeer
+from app.opvolging import Overig, _plus_maanden, herbalanceer, signalen, waardeer
 from app.portefeuille import Fonds
 
 D = date(2026, 11, 17)
@@ -73,6 +73,46 @@ def test_zonder_koers_geen_voorstel():
         herbalanceer(w, ADVIES)
 
 
+APPLE = Overig("Apple aandelen", "aandelen", 10_000, isin="US0378331005")
+
+
+def test_overig_bezit_telt_mee_in_totaal_en_verdeling():
+    # 500 × 100 = 50.000 aandelen, 800 × 50 = 40.000 obligaties, 10.000 Apple: totaal 100.000.
+    w = waardeer({A: 500, O: 800}, 0, KOERSEN, ADVIES, FONDSEN, [APPLE])
+    assert w.totaal == 100_000
+    assert w.per_categorie == {"aandelen": 6000, "obligaties": 4000, "liquiditeiten": 0}
+    assert [(o.omschrijving, o.gewicht, o.behouden) for o in w.overig] == [
+        ("Apple aandelen", 1000, False)
+    ]
+
+
+def test_overig_bezit_wordt_verkocht_met_geschat_bedrag():
+    # Apple verkopen levert naar schatting 10.000 op; doel 60.000 aandelen → 100 stuks A erbij.
+    w = waardeer({A: 500, O: 800}, 0, KOERSEN, ADVIES, FONDSEN, [APPLE])
+    h = herbalanceer(w, ADVIES)
+    assert [(t.naam, t.actie, t.aantal, t.bedrag, t.geschat) for t in h.transacties] == [
+        ("Apple aandelen", "verkoop", None, 10_000, True),
+        ("Aandelen Wereld", "koop", 100, 10_000, False),
+    ]
+    assert h.kas_na == 0 and h.gewichten_na == {A: 6000, O: 4000}
+
+
+def test_behouden_overig_bezit_blijft_buiten_het_herbalanceren():
+    # Belegbaar: 100.000 − 10.000 = 90.000 → doel 54.000 A en 36.000 O.
+    # Verkoop 4.000 / 50 = 80 O, koop 4.000 / 100 = 40 A.
+    houden = Overig("Apple aandelen", "aandelen", 10_000, behouden=True)
+    w = waardeer({A: 500, O: 800}, 0, KOERSEN, ADVIES, FONDSEN, [houden])
+    h = herbalanceer(w, ADVIES)
+    assert [(t.isin, t.actie, t.aantal) for t in h.transacties] == [
+        (O, "verkoop", 80),
+        (A, "koop", 40),
+    ]
+    assert h.gewichten_na == {A: 5400, O: 3600}
+    # Geen signaal voor het behouden bezit, en de fondsen worden tegen het belegbare deel getoetst.
+    w2 = waardeer({A: 540, O: 720}, 0, KOERSEN, ADVIES, FONDSEN, [houden])
+    assert codes(waardering=w2) == []
+
+
 # --- signalen --------------------------------------------------------------------------
 
 
@@ -122,3 +162,8 @@ def test_plus_maanden_aan_het_eind_van_de_maand():
     assert _plus_maanden(date(2026, 1, 31), 1) == date(2026, 2, 28)
     assert _plus_maanden(date(2026, 11, 17), 12) == date(2027, 11, 17)
     assert _plus_maanden(date(2026, 12, 17), -1) == date(2026, 11, 17)
+
+
+def test_overig_bezit_buiten_advies_geeft_signaal():
+    w = waardeer({A: 500, O: 800}, 0, KOERSEN, ADVIES, FONDSEN, [APPLE])
+    assert "niet_in_advies" in codes(waardering=w)

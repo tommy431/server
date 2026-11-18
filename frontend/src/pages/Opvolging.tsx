@@ -17,6 +17,17 @@ const UITKOMSTEN: Record<string, string> = {
 };
 
 type Regel = { isin: string; aantal: string };
+type OverigRegel = { omschrijving: string; isin: string; categorie: string; waarde: string; behouden: boolean };
+const CATEGORIEEN = ["aandelen", "obligaties", "vastgoed", "grondstoffen", "liquiditeiten", "overig"];
+const leegOverig = (): OverigRegel => ({ omschrijving: "", isin: "", categorie: "", waarde: "", behouden: false });
+/** Leest "1.250", "1250,5" en "12.50" als 1250, 1250,5 en 12,5. */
+function getal(tekst: string): number {
+  const t = tekst.trim().replace(/[\s\u00a0]/g, "");
+  if (t.includes(",")) return Number(t.replace(/\./g, "").replace(",", "."));
+  // Zonder komma: een punt gevolgd door precies drie cijfers is een duizendtalscheiding.
+  if (/^-?[1-9]\d{0,2}(\.\d{3})+$/.test(t)) return Number(t.replace(/\./g, ""));
+  return Number(t);
+}
 
 export default function Opvolging() {
   const id = Number(useParams().id);
@@ -26,6 +37,7 @@ export default function Opvolging() {
   const [fouten, setFouten] = useState<string[]>([]);
   const [bezitFormulier, setBezitFormulier] = useState(false);
   const [regels, setRegels] = useState<Regel[]>([]);
+  const [overig, setOverig] = useState<OverigRegel[]>([]);
   const [kas, setKas] = useState("0");
   const [peildatum, setPeildatum] = useState(vandaag());
   const [inleesMeldingen, setInleesMeldingen] = useState<string[]>([]);
@@ -59,7 +71,16 @@ export default function Opvolging() {
       ? Object.entries(vorige).map(([isin, a]) => ({ isin, aantal: String(a) }))
       : Object.keys(o?.advies?.posities ?? {}).map((isin) => ({ isin, aantal: "" }));
     setRegels(basis.length ? basis : [{ isin: "", aantal: "" }]);
-    setKas(String(o?.bezit?.kas_eur ?? 0));
+    setOverig(
+      (o?.bezit?.overig ?? []).map((x) => ({
+        omschrijving: x.omschrijving,
+        isin: x.isin ?? "",
+        categorie: x.categorie,
+        waarde: String(x.waarde).replace(".", ","),
+        behouden: x.behouden,
+      })),
+    );
+    setKas(String(o?.bezit?.kas_eur ?? 0).replace(".", ","));
     setPeildatum(vandaag());
     setInleesMeldingen([]);
     setBezitFormulier(true);
@@ -76,14 +97,28 @@ export default function Opvolging() {
       tekst = new TextDecoder("windows-1252").decode(bytes);
     }
     try {
-      const r = await api<{ posities: { isin: string; aantal: number }[]; meldingen: string[] }>(
+      const r = await api<{
+        posities: { isin: string; aantal: number }[];
+        overig: { isin: string; omschrijving: string; waarde_eur: number | null }[];
+        meldingen: string[];
+      }>(
         `/klanten/${id}/bezit/inlezen`,
         { methode: "POST", body: { tekst } },
       );
-      if (r.posities.length) setRegels(r.posities.map((p) => ({ isin: p.isin, aantal: String(p.aantal).replace(".", ",") })));
+      if (r.posities.length || r.overig.length) {
+        setRegels(r.posities.map((p) => ({ isin: p.isin, aantal: String(p.aantal).replace(".", ",") })));
+        setOverig(
+          r.overig.map((x) => ({
+            ...leegOverig(),
+            omschrijving: x.omschrijving,
+            isin: x.isin,
+            waarde: x.waarde_eur === null ? "" : String(x.waarde_eur).replace(".", ","),
+          })),
+        );
+      }
       setInleesMeldingen([
-        r.posities.length
-          ? `${r.posities.length} fonds(en) ingelezen uit ${bestand.name}. Controleer de aantallen en vul het geldsaldo in.`
+        r.posities.length || r.overig.length
+          ? `${r.posities.length + r.overig.length} positie(s) ingelezen uit ${bestand.name}. Controleer de aantallen en vul het geldsaldo in.`
           : `Uit ${bestand.name} zijn geen fondsen overgenomen.`,
         ...r.meldingen,
       ]);
@@ -96,12 +131,21 @@ export default function Opvolging() {
     e.preventDefault();
     const posities = regels
       .filter((r) => r.isin && r.aantal.trim() !== "")
-      .map((r) => ({ isin: r.isin, aantal: Number(r.aantal.replace(",", ".")) }))
+      .map((r) => ({ isin: r.isin, aantal: getal(r.aantal) }))
       .filter((r) => r.aantal !== 0);
+    const overigInvoer = overig
+      .filter((x) => x.omschrijving.trim() || x.waarde.trim())
+      .map((x) => ({
+        omschrijving: x.omschrijving.trim(),
+        isin: x.isin.trim().toUpperCase() || null,
+        categorie: x.categorie,
+        waarde_eur: getal(x.waarde),
+        behouden: x.behouden,
+      }));
     try {
       await api(`/klanten/${id}/bezit`, {
         methode: "POST",
-        body: { peildatum, posities, kas_eur: Number(kas.replace(",", ".")) || 0 },
+        body: { peildatum, posities, overig: overigInvoer, kas_eur: getal(kas) || 0 },
       });
       setBezitFormulier(false);
       await laad();
@@ -135,7 +179,10 @@ export default function Opvolging() {
     );
   }
 
-  const w = o.waardering;
+  const w = o.waardering && {
+    ...o.waardering,
+    behouden: o.waardering.overig.filter((x) => x.behouden).reduce((t, x) => t + x.waarde, 0),
+  };
   const h = o.herbalancering;
   const actief = !klant.gearchiveerd;
 
@@ -195,12 +242,12 @@ export default function Opvolging() {
                 Peildatum
                 <input type="date" value={peildatum} max={vandaag()} onChange={(e) => setPeildatum(e.target.value)} required />
               </label>
-              <table className="compact">
+              <table className="compact bezit-tabel">
                 <thead>
                   <tr>
                     <th>Fonds</th>
-                    <th>Aantal stukken</th>
-                    <th />
+                    <th className="aantal-kolom">Aantal</th>
+                    <th className="verwijder-kolom" />
                   </tr>
                 </thead>
                 <tbody>
@@ -241,6 +288,55 @@ export default function Opvolging() {
               <p>
                 <button type="button" className="tekstknop" onClick={() => setRegels([...regels, { isin: "", aantal: "" }])}>
                   + Fonds toevoegen
+                </button>
+              </p>
+              <h3>Overig bezit</h3>
+              <p className="zacht">
+                Beleggingen die niet in de fondsenlijst staan, zoals losse aandelen of andere fondsen, met de waarde
+                van het depotoverzicht. Ze tellen mee in het vermogen en de verdeling. Wil de klant iets houden, vink
+                dan &lsquo;Behouden&rsquo; aan: het blijft dan buiten het herbalanceren.
+              </p>
+              {overig.map((x, i) => {
+                const zet = (deel: Partial<OverigRegel>) => setOverig(overig.map((y, j) => (j === i ? { ...y, ...deel } : y)));
+                return (
+                  <fieldset className="overig-regel" key={i}>
+                    <legend className="zacht">Overig {i + 1}</legend>
+                    <label>
+                      Omschrijving
+                      <input value={x.omschrijving} maxLength={200} required onChange={(e) => zet({ omschrijving: e.target.value })} />
+                    </label>
+                    <label>
+                      ISIN (optioneel)
+                      <input value={x.isin} maxLength={12} className="isin" onChange={(e) => zet({ isin: e.target.value })} />
+                    </label>
+                    <label>
+                      Categorie
+                      <select value={x.categorie} required onChange={(e) => zet({ categorie: e.target.value })}>
+                        <option value="">Kies…</option>
+                        {CATEGORIEEN.map((c) => (
+                          <option key={c} value={c}>
+                            {naam(c)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Waarde (€)
+                      <input inputMode="decimal" className="klein-bedrag" value={x.waarde} required onChange={(e) => zet({ waarde: e.target.value })} />
+                    </label>
+                    <label className="vinkje">
+                      <input type="checkbox" checked={x.behouden} onChange={(e) => zet({ behouden: e.target.checked })} />
+                      Behouden
+                    </label>
+                    <button type="button" className="tekstknop" onClick={() => setOverig(overig.filter((_, j) => j !== i))}>
+                      Verwijder
+                    </button>
+                  </fieldset>
+                );
+              })}
+              <p>
+                <button type="button" className="tekstknop" onClick={() => setOverig([...overig, leegOverig()])}>
+                  + Overig bezit toevoegen
                 </button>
               </p>
               <label className="smal-veld">
@@ -285,6 +381,21 @@ export default function Opvolging() {
                       <td className="getal">{euro(p.waarde)}</td>
                       <td className="getal">{pct(p.gewicht)}</td>
                       <td className="getal">{pct(p.advies)}</td>
+                    </tr>
+                  ))}
+                  {w.overig.map((x, i) => (
+                    <tr key={`overig-${i}`}>
+                      <td>
+                        {x.omschrijving}{" "}
+                        <span className="zacht">
+                          (overig{x.behouden ? ", behouden" : ""}, waarde opgegeven)
+                        </span>
+                      </td>
+                      <td className="alleen-breed" />
+                      <td className="alleen-breed" />
+                      <td className="getal">{euro(x.waarde)}</td>
+                      <td className="getal">{pct(x.gewicht)}</td>
+                      <td className="getal">{x.behouden ? <span className="zacht">—</span> : pct(0)}</td>
                     </tr>
                   ))}
                   <tr>
@@ -353,16 +464,28 @@ export default function Opvolging() {
                     </tr>
                   </thead>
                   <tbody>
-                    {h.transacties.map((t) => (
-                      <tr key={t.isin + t.actie}>
+                    {h.transacties.map((t, i) => (
+                      <tr key={`${t.isin ?? t.naam}-${t.actie}-${i}`}>
                         <td>{t.actie === "koop" ? "Kopen" : "Verkopen"}</td>
                         <td>{t.naam}</td>
-                        <td className="getal">{stuks(t.aantal)}</td>
-                        <td className="getal">{euro(t.bedrag)}</td>
+                        <td className="getal">{t.aantal === null ? "alles" : stuks(t.aantal)}</td>
+                        <td className="getal">{t.geschat ? `≈ ${euro(t.bedrag)}` : euro(t.bedrag)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                {h.transacties.some((t) => t.geschat) && (
+                  <p className="melding let-op">
+                    ≈ Overig bezit is gerekend met de opgegeven waarde; de werkelijke opbrengst kan afwijken. Leg na de
+                    verkoop een nieuwe opgave vast voordat u de aankopen doet.
+                  </p>
+                )}
+                {w.behouden > 0 && (
+                  <p className="zacht">
+                    Behouden bezit ({euro(w.behouden)}) blijft staan; de gewichten van het advies gelden voor de rest
+                    van het vermogen.
+                  </p>
+                )}
                 <p className="zacht">Geldsaldo na uitvoering: {euro(h.kas_na)}.</p>
               </>
             )

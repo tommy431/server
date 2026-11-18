@@ -75,9 +75,36 @@ test("bezit inlezen uit een depotoverzicht", async ({ page }) => {
     mimeType: "text/csv",
     buffer: Buffer.from(csv, "latin1"),
   });
-  await expect(page.getByText("1 fonds(en) ingelezen uit depot.csv")).toBeVisible();
-  await expect(page.getByText(/Niet in de fondsenlijst.*US0378331005/)).toBeVisible();
+  await expect(page.getByText("2 positie(s) ingelezen uit depot.csv")).toBeVisible();
+  await expect(page.getByText(/buiten de fondsenlijst zijn als overig bezit opgenomen/)).toBeVisible();
   await expect(page.getByLabel("Aantal iShares Core MSCI World UCITS ETF (Acc)")).toHaveValue("1250");
+
+  // Apple staat niet in de fondsenlijst: overig bezit met de waarde uit de export.
+  const apple = page.getByRole("group", { name: "Overig 1" });
+  await expect(apple.getByLabel("Omschrijving")).toHaveValue("Apple");
+  await expect(apple.getByLabel("ISIN (optioneel)")).toHaveValue("US0378331005");
+  await expect(apple.getByLabel("Waarde (€)")).toHaveValue("2000");
+  await apple.getByLabel("Categorie").selectOption("aandelen");
   await page.getByRole("button", { name: "Opslaan" }).click();
+
   await expect(page.getByRole("cell", { name: "1.250" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: /Apple \(overig, waarde opgegeven\)/ })).toBeVisible();
+  await expect(page.getByText("Apple (overig bezit) zit niet in het advies")).toBeVisible();
+  const voorstel = page.locator("section", { has: page.getByRole("heading", { name: "Herbalanceringsvoorstel" }) });
+  await expect(voorstel.getByRole("row", { name: /Verkopen Apple alles ≈ € 2\.000/ })).toBeVisible();
+
+  // Behouden: geen signaal en geen verkoop meer.
+  await page.getByRole("button", { name: "Nieuwe opgave" }).click();
+  await page.getByRole("group", { name: "Overig 1" }).getByLabel("Behouden").check();
+  await page.getByRole("button", { name: "Opslaan" }).click();
+  await expect(page.getByRole("cell", { name: /Apple \(overig, behouden/ })).toBeVisible();
+  await expect(page.getByText("Apple (overig bezit) zit niet in het advies")).toHaveCount(0);
+  await expect(voorstel.getByRole("row", { name: /Apple/ })).toHaveCount(0);
+  if (process.env.SCHERMAFDRUK) {
+    await page.screenshot({ path: `${process.env.SCHERMAFDRUK}/overig.png`, fullPage: true });
+    await page.setViewportSize({ width: 375, height: 800 });
+    await page.getByRole("button", { name: "Nieuwe opgave" }).click();
+    await geenHorizontaleScroll(page);
+    await page.screenshot({ path: `${process.env.SCHERMAFDRUK}/overig-formulier-telefoon.png`, fullPage: true });
+  }
 });

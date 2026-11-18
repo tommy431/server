@@ -85,3 +85,20 @@ def test_zonder_aantalkolom():
 def test_leeg_en_te_groot():
     assert lees_bezit("").meldingen == ["Het bestand is leeg"]
     assert "te groot" in lees_bezit("x" * 1_000_001).meldingen[0]
+
+
+def test_omschrijving_en_waarde_per_positie():
+    tekst = (
+        "Product;ISIN;Aantal;Koers;Waarde\n"
+        "Apple Inc.;US0378331005;10;190,00;1.900,00\n"
+        "Apple Inc.;US0378331005;5;190,00;950,00\n"
+        f"iShares World ({WERELD});{WERELD};3;98,00;294,00\n"
+    )
+    r = lees_bezit(tekst)
+    assert r.omschrijvingen == {"US0378331005": "Apple Inc.", WERELD: "iShares World"}
+    assert r.waarden == {"US0378331005": 2850.0, WERELD: 294.0}
+
+
+def test_zonder_waardekolom_geen_waarden():
+    r = lees_bezit(f"ISIN;Aantal\n{WERELD};3\n")
+    assert r.waarden == {} and r.omschrijvingen == {WERELD: WERELD}

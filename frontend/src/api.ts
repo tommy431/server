@@ -409,7 +409,17 @@ export type Positiewaarde = {
   gewicht: number;
   advies: number;
 };
-export type Transactie = { isin: string; naam: string; actie: "koop" | "verkoop"; aantal: number; koers: number; bedrag: number };
+export type Transactie = {
+  isin: string | null;
+  naam: string;
+  actie: "koop" | "verkoop";
+  aantal: number | null;
+  koers: number | null;
+  bedrag: number;
+  geschat: boolean;
+};
+export type OverigBezit = { omschrijving: string; isin: string | null; categorie: string; waarde: number; behouden: boolean };
+export type Overigwaarde = OverigBezit & { gewicht: number };
 export type Evaluatie = { id: number; datum: string; uitkomst: string; notitie: string | null; door: string };
 export type Opvolging = {
   advies: {
@@ -419,13 +429,20 @@ export type Opvolging = {
     banden: Record<string, { streef: number; minimum: number; maximum: number }>;
     posities: Record<string, number>;
   } | null;
-  bezit: { peildatum: string; posities: Record<string, number>; kas_eur: number; vastgelegd_op: string } | null;
+  bezit: {
+    peildatum: string;
+    posities: Record<string, number>;
+    overig: OverigBezit[];
+    kas_eur: number;
+    vastgelegd_op: string;
+  } | null;
   waardering: {
     totaal: number;
     kas: number;
     posities: Positiewaarde[];
     per_categorie: Record<string, number>;
     zonder_koers: string[];
+    overig: Overigwaarde[];
   } | null;
   herbalancering: { transacties: Transactie[]; kas_na: number; gewichten_na: Record<string, number> } | null;
   herbalancering_fout: string | null;

@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 
 from app.api.afhankelijkheden import Db, Ingelogd
 from app.api.klanten import _eigen_klant
-from app.bezitimport import MAX_TEKENS, lees_bezit
+from app.bezitimport import MAX_TEKENS, isin_geldig, lees_bezit
 from app.logboek import leg_vast
 from app.models import (
     Adviseur,
@@ -21,7 +21,7 @@ from app.models import (
     Portefeuille,
     Positie,
 )
-from app.opvolging import herbalanceer, signalen, waardeer
+from app.opvolging import Overig, herbalanceer, signalen, waardeer
 from app.portefeuille import Fonds
 
 router = APIRouter(tags=["opvolging"])
@@ -32,9 +32,20 @@ class BezitRegel(BaseModel):
     aantal: float = Field(gt=0, le=1e9)
 
 
+class OverigIn(BaseModel):
+    omschrijving: str = Field(min_length=1, max_length=200)
+    isin: str | None = Field(default=None, max_length=12)
+    categorie: Literal[
+        "aandelen", "obligaties", "vastgoed", "grondstoffen", "liquiditeiten", "overig"
+    ]
+    waarde_eur: float = Field(gt=0, le=1e10)
+    behouden: bool = False
+
+
 class BezitIn(BaseModel):
     peildatum: date
-    posities: list[BezitRegel]
+    posities: list[BezitRegel] = Field(max_length=200)
+    overig: list[OverigIn] = Field(default_factory=list, max_length=50)
     kas_eur: float = Field(ge=0, le=1e10)
 
 
@@ -48,8 +59,15 @@ class IngelezenRegel(BaseModel):
     aantal: float
 
 
+class OverigVoorstel(BaseModel):
+    isin: str
+    omschrijving: str
+    waarde_eur: float | None
+
+
 class InlezenUit(BaseModel):
     posities: list[IngelezenRegel]
+    overig: list[OverigVoorstel]
     meldingen: list[str]
 
 
@@ -165,6 +183,10 @@ def _toestand(db: Db, klant: Klant, vandaag: date, koersen=None, fondsen=None) -
             koersen if koersen is not None else _laatste_koersen(db),
             gewichten,
             fondsen or _fondsen(db),
+            [
+                Overig(o["omschrijving"], o["categorie"], o["waarde"], o["behouden"], o.get("isin"))
+                for o in bezit.overig or []
+            ],
         )
     profiel_na_advies = bool(
         profiel and advies and db.get(Klantprofiel, advies.klantprofiel_id).versie < profiel.versie
@@ -225,6 +247,7 @@ def opvolging(klant_id: int, db: Db, adviseur: Ingelogd) -> OpvolgingUit:
             "peildatum": bezit.peildatum.isoformat(),
             "posities": bezit.posities,
             "kas_eur": bezit.kas_eur,
+            "overig": bezit.overig or [],
             "vastgelegd_op": bezit.vastgelegd_op.isoformat(),
         }
         if bezit
@@ -264,11 +287,32 @@ def leg_bezit_vast(klant_id: int, invoer: BezitIn, db: Db, adviseur: Ingelogd) -
         )
     if len({p.isin for p in invoer.posities}) != len(invoer.posities):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Een fonds komt dubbel voor")
+    for o in invoer.overig:
+        if o.isin and o.isin in bekend:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                f"{o.isin} staat in de fondsenlijst; leg het vast als fonds met een aantal",
+            )
+        if o.isin and not isin_geldig(o.isin):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                f"Ongeldig ISIN bij {o.omschrijving}: {o.isin}",
+            )
     opgave = Bezitsopgave(
         klant_id=klant.id,
         peildatum=invoer.peildatum,
         posities={p.isin: p.aantal for p in invoer.posities},
         kas_eur=invoer.kas_eur,
+        overig=[
+            {
+                "omschrijving": o.omschrijving.strip(),
+                "isin": o.isin or None,
+                "categorie": o.categorie,
+                "waarde": o.waarde_eur,
+                "behouden": o.behouden,
+            }
+            for o in invoer.overig
+        ],
         vastgelegd_door=adviseur.id,
     )
     db.add(opgave)
@@ -279,7 +323,11 @@ def leg_bezit_vast(klant_id: int, invoer: BezitIn, db: Db, adviseur: Ingelogd) -
         adviseur_id=adviseur.id,
         entiteit="klant",
         entiteit_id=klant.id,
-        details={"peildatum": invoer.peildatum.isoformat(), "fondsen": len(invoer.posities)},
+        details={
+            "peildatum": invoer.peildatum.isoformat(),
+            "fondsen": len(invoer.posities),
+            "overig": len(invoer.overig),
+        },
     )
     db.commit()
     return {"id": opgave.id}
@@ -294,17 +342,25 @@ def bezit_inlezen(klant_id: int, invoer: InlezenIn, db: Db, adviseur: Ingelogd) 
     onbekend = [i for i in r.posities if i not in namen]
     meldingen = list(r.meldingen)
     if onbekend:
+        zonder_waarde = [i for i in onbekend if r.waarden.get(i) is None]
         meldingen.insert(
             0,
-            "Niet in de fondsenlijst, dus niet overgenomen: "
-            + ", ".join(onbekend)
-            + ". Laat deze fondsen eerst toevoegen of neem ze buiten het overzicht op.",
+            f"{len(onbekend)} positie(s) buiten de fondsenlijst zijn als overig bezit opgenomen; "
+            "kies de beleggingscategorie"
+            + (" en vul de waarde in" if zonder_waarde else " en controleer de waarde")
+            + ".",
         )
     return InlezenUit(
         posities=[
             IngelezenRegel(isin=i, naam=namen[i], aantal=a)
             for i, a in r.posities.items()
             if i in namen
+        ],
+        overig=[
+            OverigVoorstel(
+                isin=i, omschrijving=r.omschrijvingen.get(i, i), waarde_eur=r.waarden.get(i)
+            )
+            for i in onbekend
         ],
         meldingen=meldingen,
     )

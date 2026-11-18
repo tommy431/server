@@ -31,22 +31,55 @@ class Positiewaarde:
 
 
 @dataclass(frozen=True)
+class Overig:
+    """Bezit buiten de fondsenlijst (zoals losse aandelen), met een handmatige waarde."""
+
+    omschrijving: str
+    categorie: str
+    waarde: float
+    behouden: bool = False  # de klant wil dit houden: buiten het herbalanceren
+    isin: str | None = None
+
+
+@dataclass(frozen=True)
+class Overigwaarde:
+    omschrijving: str
+    isin: str | None
+    categorie: str
+    waarde: float
+    gewicht: int  # basispunten van het totaal
+    behouden: bool
+
+
+@dataclass(frozen=True)
 class Waardering:
     totaal: float
     kas: float
     posities: list[Positiewaarde]
     per_categorie: dict[str, int]  # basispunten; het geldsaldo telt als liquiditeiten
     zonder_koers: list[str] = field(default_factory=list)
+    overig: list[Overigwaarde] = field(default_factory=list)
+
+    @property
+    def behouden(self) -> float:
+        """Waarde die buiten het herbalanceren blijft."""
+        return sum(o.waarde for o in self.overig if o.behouden)
+
+    @property
+    def belegbaar_deel(self) -> float:
+        """Deel van het vermogen waarover de gewichten van het advies gaan."""
+        return (self.totaal - self.behouden) / self.totaal if self.totaal > 0 else 1.0
 
 
 @dataclass(frozen=True)
 class Transactie:
-    isin: str
+    isin: str | None
     naam: str
     actie: str  # "koop" of "verkoop"
-    aantal: int
-    koers: float
+    aantal: float | None  # None bij overig bezit: alles verkopen
+    koers: float | None
     bedrag: float
+    geschat: bool = False  # bedrag volgt uit een handmatige waarde
 
 
 @dataclass(frozen=True)
@@ -73,8 +106,12 @@ def waardeer(
     koersen: dict[str, tuple[date, float]],
     advies: dict[str, int],
     fondsen: dict[str, Fonds],
+    overig: list[Overig] = (),
 ) -> Waardering:
-    """Waardeert het bezit tegen de laatst bekende koersen (in euro's)."""
+    """Waardeert het bezit tegen de laatst bekende koersen (in euro's).
+
+    Overig bezit telt mee met de handmatige waarde.
+    """
     regels = []
     zonder_koers = []
     for isin, aantal in bezit.items():
@@ -85,7 +122,7 @@ def waardeer(
             datum, koers = None, None
             zonder_koers.append(f.naam if f else isin)
         regels.append((isin, f, aantal, koers, datum, aantal * koers if koers else 0.0))
-    totaal = kas + sum(r[5] for r in regels)
+    totaal = kas + sum(r[5] for r in regels) + sum(o.waarde for o in overig)
 
     posities = [
         Positiewaarde(
@@ -122,6 +159,8 @@ def waardeer(
     per_categorie: dict[str, float] = {}
     for p in posities:
         per_categorie[p.categorie] = per_categorie.get(p.categorie, 0.0) + p.waarde
+    for o in overig:
+        per_categorie[o.categorie] = per_categorie.get(o.categorie, 0.0) + o.waarde
     per_categorie["liquiditeiten"] = per_categorie.get("liquiditeiten", 0.0) + kas
     return Waardering(
         totaal=totaal,
@@ -129,6 +168,12 @@ def waardeer(
         posities=sorted(posities, key=lambda p: (-p.advies, -p.waarde, p.naam)),
         per_categorie={c: _bp(w, totaal) for c, w in per_categorie.items()},
         zonder_koers=zonder_koers,
+        overig=[
+            Overigwaarde(
+                o.omschrijving, o.isin, o.categorie, o.waarde, _bp(o.waarde, totaal), o.behouden
+            )
+            for o in sorted(overig, key=lambda o: -o.waarde)
+        ],
     )
 
 
@@ -140,12 +185,21 @@ def herbalanceer(
     Eerst verkopen (wat te veel is, en fondsen buiten het advies), daarna kopen met het geldsaldo
     plus de opbrengst. Is er te weinig geld, dan worden alle aankopen naar rato verkleind.
     Afwijkingen kleiner dan `min_bedrag` blijven staan.
+
+    Overig bezit wordt in zijn geheel verkocht tegen de handmatige waarde (een schatting), tenzij
+    de klant het wil behouden: dan gaan de gewichten van het advies over de rest van het vermogen.
     """
     if w.zonder_koers or any(p.koers is None for p in w.posities if p.advies):
         raise ValueError("Niet van alle fondsen in bezit of advies is een koers bekend")
-    totaal = w.totaal
+    totaal = w.totaal - w.behouden
     transacties: list[Transactie] = []
     kas = w.kas
+    for o in w.overig:
+        if not o.behouden and o.waarde >= min_bedrag:
+            transacties.append(
+                Transactie(o.isin, o.omschrijving, "verkoop", None, None, o.waarde, geschat=True)
+            )
+            kas += o.waarde
     na = {p.isin: p.aantal for p in w.posities}
     koers = {p.isin: p.koers for p in w.posities}
 
@@ -180,7 +234,7 @@ def herbalanceer(
     return Herbalancering(
         transacties=transacties,
         kas_na=kas,
-        gewichten_na={isin: _bp(v, totaal) for isin, v in waarde_na.items() if v > 0},
+        gewichten_na={isin: _bp(v, w.totaal) for isin, v in waarde_na.items() if v > 0},
     )
 
 
@@ -267,6 +321,16 @@ def signalen(
     # Valt een categorie buiten de bandbreedte, dan dekt het herbalanceringsvoorstel de
     # afwijkingen per fonds; die melden we dan niet ook nog afzonderlijk.
     buiten = any(s.code == "buiten_bandbreedte" for s in uit)
+    for o in waardering.overig:
+        if not o.behouden:
+            uit.append(
+                Signaal(
+                    "middel",
+                    "niet_in_advies",
+                    f"{o.omschrijving} (overig bezit) zit niet in het advies",
+                )
+            )
+    factor = waardering.belegbaar_deel
     for p in waardering.posities:
         if p.advies == 0 and p.waarde > 0:
             uit.append(
@@ -274,7 +338,7 @@ def signalen(
                     "middel", "niet_in_advies", f"{p.naam} zit in het bezit maar niet in het advies"
                 )
             )
-        elif not buiten and abs(p.gewicht - p.advies) > AFWIJKING_POSITIE_BP:
+        elif not buiten and abs(p.gewicht - p.advies * factor) > AFWIJKING_POSITIE_BP:
             uit.append(
                 Signaal(
                     "laag",

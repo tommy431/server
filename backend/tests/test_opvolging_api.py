@@ -173,9 +173,84 @@ def test_bezit_inlezen_uit_csv(ingelogd, klant_id, db):
     r = ingelogd.post(f"/klanten/{klant_id}/bezit/inlezen", json={"tekst": tekst})
     assert r.status_code == 200
     assert [(p["isin"], p["aantal"]) for p in r.json()["posities"]] == [(WERELD, 1250)]
-    assert r.json()["meldingen"][0].startswith(
-        "Niet in de fondsenlijst, dus niet overgenomen: US0378331005"
-    )
+    # Zonder waardekolom: de waarde vult de adviseur zelf in.
+    assert r.json()["overig"] == [
+        {"isin": "US0378331005", "omschrijving": "Apple", "waarde_eur": None}
+    ]
+    assert r.json()["meldingen"][0].startswith("1 positie(s) buiten de fondsenlijst")
+    assert "vul de waarde in" in r.json()["meldingen"][0]
     # Er is niets opgeslagen.
     assert ingelogd.get(f"/klanten/{klant_id}/opvolging").json()["bezit"] is None
     assert "bezit_vastgelegd" not in db.scalars(select(Logboek.actie)).all()
+
+
+def test_overig_bezit_vastleggen_en_waarderen(ingelogd, klant_id, db):
+    _advies(ingelogd, klant_id)
+    _koers(db, WERELD, 100.0)
+    _koers(db, GELD, 10.0)
+    overig = [
+        {
+            "omschrijving": "Apple aandelen",
+            "isin": "US0378331005",
+            "categorie": "aandelen",
+            "waarde_eur": 10000,
+        },
+        {
+            "omschrijving": "Vastgoedfonds X",
+            "categorie": "vastgoed",
+            "waarde_eur": 5000,
+            "behouden": True,
+        },
+    ]
+    r = ingelogd.post(
+        f"/klanten/{klant_id}/bezit",
+        json={
+            "peildatum": date.today().isoformat(),
+            "posities": [{"isin": WERELD, "aantal": 500}, {"isin": GELD, "aantal": 3500}],
+            "overig": overig,
+            "kas_eur": 0,
+        },
+    )
+    assert r.status_code == 201, r.text
+    o = ingelogd.get(f"/klanten/{klant_id}/opvolging").json()
+    # 50.000 + 35.000 + 10.000 + 5.000 = 100.000
+    assert o["waardering"]["totaal"] == 100000
+    assert [
+        (x["omschrijving"], x["gewicht"], x["behouden"]) for x in o["waardering"]["overig"]
+    ] == [
+        ("Apple aandelen", 1000, False),
+        ("Vastgoedfonds X", 500, True),
+    ]
+    assert o["bezit"]["overig"][0]["isin"] == "US0378331005"
+    verkoop = [t for t in o["herbalancering"]["transacties"] if t["geschat"]]
+    assert [(t["naam"], t["bedrag"], t["aantal"]) for t in verkoop] == [
+        ("Apple aandelen", 10000, None)
+    ]
+    meldingen = [s["melding"] for s in o["signalen"]]
+    assert "Apple aandelen (overig bezit) zit niet in het advies" in meldingen
+    assert not any("Vastgoedfonds" in m for m in meldingen)
+
+
+def test_overig_bezit_wordt_gecontroleerd(ingelogd, klant_id):
+    def met(overig):
+        return ingelogd.post(
+            f"/klanten/{klant_id}/bezit",
+            json={
+                "peildatum": date.today().isoformat(),
+                "posities": [],
+                "overig": [overig],
+                "kas_eur": 0,
+            },
+        )
+
+    goed = {"omschrijving": "Apple", "categorie": "aandelen", "waarde_eur": 100}
+    assert (
+        met(goed | {"isin": WERELD})
+        .json()["detail"]
+        .startswith(f"{WERELD} staat in de fondsenlijst")
+    )
+    assert "Ongeldig ISIN" in met(goed | {"isin": "US0378331006"}).json()["detail"]
+    assert met(goed | {"categorie": "crypto"}).status_code == 422
+    assert met(goed | {"waarde_eur": 0}).status_code == 422
+    assert met(goed | {"omschrijving": ""}).status_code == 422
+    assert met(goed).status_code == 201
