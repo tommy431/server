@@ -6,7 +6,7 @@ import { Waardegrafiek } from "./Waardegrafiek";
 const TITEL: Record<string, string> = { "1j": "1 jaar", "3j": "3 jaar", "5j": "5 jaar", "10j": "10 jaar" };
 
 /** Historische analyse van een portefeuille tegen de benchmark van het risicoprofiel. */
-export function Analyse({ uitkomst }: { uitkomst: AnalyseUitkomst }) {
+export function Analyse({ uitkomst, kanAanvullen = false }: { uitkomst: AnalyseUitkomst; kanAanvullen?: boolean }) {
   const a = uitkomst.analyse;
   if (!a.peildatum) {
     return (
@@ -142,6 +142,12 @@ export function Analyse({ uitkomst }: { uitkomst: AnalyseUitkomst }) {
               </tbody>
             </table>
           </div>
+          {kanAanvullen && a.stressperioden.some((s) => !s.beschikbaar) && (
+            <p className="zacht">
+              Met &lsquo;Korte fondshistorie aanvullen&rsquo; worden ontbrekende perioden benaderd met een vergelijkbaar
+              fonds, als dat bekend is.
+            </p>
+          )}
         </>
       )}
 

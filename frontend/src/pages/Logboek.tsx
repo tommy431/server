@@ -18,6 +18,17 @@ const tijd = (iso: string) =>
   new Intl.DateTimeFormat("nl-NL", { dateStyle: "medium", timeStyle: "medium" }).format(new Date(iso));
 const leesbaar = (actie: string) => actie.replace(/_/g, " ");
 
+/** Details als "sleutel: waarde"; lange waarden (zoals vingerafdrukken) ingekort. */
+function detailsTekst(details: Record<string, unknown>): string {
+  return Object.entries(details)
+    .map(([k, v]) => {
+      let w = typeof v === "string" ? v : JSON.stringify(v);
+      if (w.length > 40) w = `${w.slice(0, 16)}…`;
+      return `${k.replace(/_/g, " ")}: ${w}`;
+    })
+    .join(" · ");
+}
+
 export default function Logboek() {
   const [regels, setRegels] = useState<Regel[]>([]);
   const [controle, setControle] = useState<Controle | null>(null);
@@ -89,7 +100,7 @@ export default function Logboek() {
                 <td>{leesbaar(r.actie)}</td>
                 <td className="klein-tekst">
                   {[r.entiteit, r.entiteit_id].filter(Boolean).join(" ")}
-                  {r.details && <div className="zacht">{JSON.stringify(r.details).slice(0, 160)}</div>}
+                  {r.details && <div className="zacht logdetails">{detailsTekst(r.details)}</div>}
                 </td>
               </tr>
             ))}

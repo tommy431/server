@@ -67,8 +67,9 @@ def _stijl(naam: str, vet: bool = False, grootte: float = 10, regel: float = 14.
 
 _S = {
     "titel": _stijl("titel", True, 22, 27),
-    "h1": _stijl("h1", True, 15, 19, spaceBefore=12, spaceAfter=6),
-    "h2": _stijl("h2", True, 11.5, 15, spaceBefore=9, spaceAfter=4),
+    # keepWithNext: een kop komt nooit alleen onderaan een pagina te staan.
+    "h1": _stijl("h1", True, 15, 19, spaceBefore=12, spaceAfter=6, keepWithNext=1),
+    "h2": _stijl("h2", True, 11.5, 15, spaceBefore=9, spaceAfter=4, keepWithNext=1),
     "p": _stijl("p", spaceAfter=5),
     "opsom": _stijl("opsom", spaceAfter=3, leftIndent=12, bulletIndent=0),
     "klein": _stijl("klein", grootte=8.5, regel=11.5, textColor=ZACHT),
@@ -1339,6 +1340,17 @@ def maak_rapport(g: dict) -> bytes:
                 )
             )
 
+    # Verantwoording direct na het advies, vóór de bijlagen.
+    inhoud += [
+        _p("Verantwoording", "h2"),
+        _p(
+            f"Opgesteld op {datum_lang(g['opgesteld_op'])} uit portefeuilleversie {pf['versie']} (klantprofiel versie "
+            f"{profiel['versie']}), vastgelegd op {datum_lang(pf['vastgelegd_op'])} door {_esc(g['adviseur'])}. De "
+            "cijfers zijn een momentopname van dat moment. " + _esc(g.get("databron") or ""),
+            "klein",
+        ),
+    ]
+
     # Bijlagen ------------------------------------------------------------------------------
     inhoud += [PageBreak(), _p("Bijlage A: begrippen", "h1")]
     inhoud += [_p(f"<b>{_esc(k)}.</b> {_esc(v)}") for k, v in BEGRIPPEN]
@@ -1460,15 +1472,6 @@ def maak_rapport(g: dict) -> bytes:
                 "klein",
             ),
         ]
-    inhoud += [
-        _p("Verantwoording", "h2"),
-        _p(
-            f"Opgesteld op {datum_lang(g['opgesteld_op'])} uit portefeuilleversie {pf['versie']} (klantprofiel versie "
-            f"{profiel['versie']}), vastgelegd op {datum_lang(pf['vastgelegd_op'])} door {_esc(g['adviseur'])}. De "
-            "cijfers zijn een momentopname van dat moment. " + _esc(g.get("databron") or ""),
-            "klein",
-        ),
-    ]
 
     buffer = io.BytesIO()
     titel_doc = f"Beleggingsadvies {klant['naam']} · {datum_lang(pf['vastgelegd_op'])}"

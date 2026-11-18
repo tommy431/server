@@ -254,8 +254,8 @@ export default function Aannames({ adviseur }: { adviseur: Adviseur }) {
           <tbody>
             {geschiedenis.map((g) => (
               <tr key={g.id}>
-                <td>{datum(g.vastgelegd_op)}</td>
-                <td>{datum(g.peildatum)}</td>
+                <td className="datumcel">{datum(g.vastgelegd_op)}</td>
+                <td className="datumcel">{datum(g.peildatum)}</td>
                 <td className="getal">{alsTekst(g.categorieen.aandelen.rendement)}%</td>
                 <td className="getal">{alsTekst(g.categorieen.obligaties.rendement)}%</td>
                 <td>{g.bron}</td>

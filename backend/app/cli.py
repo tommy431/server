@@ -22,10 +22,14 @@ def adviseur_aanmaken(db: Session, args: argparse.Namespace) -> int:
     if db.scalar(select(Adviseur).where(Adviseur.email == email)):
         print(f"Er bestaat al een adviseur met {email}", file=sys.stderr)
         return 1
-    wachtwoord = getpass.getpass("Wachtwoord: ")
-    if wachtwoord != getpass.getpass("Herhaal wachtwoord: "):
-        print("Wachtwoorden komen niet overeen", file=sys.stderr)
-        return 1
+    if sys.stdin.isatty():
+        wachtwoord = getpass.getpass("Wachtwoord: ")
+        if wachtwoord != getpass.getpass("Herhaal wachtwoord: "):
+            print("Wachtwoorden komen niet overeen", file=sys.stderr)
+            return 1
+    else:
+        # Zonder toetsenbord (bijvoorbeeld in een script): het wachtwoord op de eerste regel.
+        wachtwoord = sys.stdin.readline().rstrip("\n")
     try:
         hash_ = hash_wachtwoord(wachtwoord)
     except ValueError as fout:
@@ -126,7 +130,26 @@ def data_verversen(db: Session, args: argparse.Namespace) -> int:
     return 1 if mislukt else 0
 
 
+def sleutels_maken(_db, _args: argparse.Namespace) -> int:
+    """Drukt nieuwe, sterke waarden af voor JWT_GEHEIM en VERSLEUTELSLEUTEL (voor .env)."""
+    import secrets
+
+    from cryptography.fernet import Fernet
+
+    print(f"JWT_GEHEIM={secrets.token_urlsafe(48)}")
+    print(f"VERSLEUTELSLEUTEL={Fernet.generate_key().decode()}")
+    return 0
+
+
 def testomgeving(db: Session, args: argparse.Namespace) -> int:
+    # Wist alles: alleen op een SQLite-testdatabase, of met uitdrukkelijke bevestiging.
+    if db.get_bind().dialect.name != "sqlite" and not args.wis_alles:
+        print(
+            "Weigering: dit wist de hele database. Alleen voor een SQLite-testdatabase, "
+            "of geef --wis-alles mee als u dit echt wilt.",
+            file=sys.stderr,
+        )
+        return 1
     from app.config import instellingen
     from app.testomgeving import vul
 
@@ -169,12 +192,18 @@ def main() -> int:
     p.set_defaults(func=universum_laden)
 
     p = sub.add_parser("testomgeving", help="Vul een lege e2e-testdatabase (wist alles)")
+    p.add_argument("--wis-alles", action="store_true", help="Ook op een andere database dan SQLite")
     p.set_defaults(func=testomgeving)
+
+    p = sub.add_parser("sleutels-maken", help="Maak waarden voor JWT_GEHEIM en VERSLEUTELSLEUTEL")
+    p.set_defaults(func=sleutels_maken, zonder_database=True)
 
     p = sub.add_parser("data-verversen", help="Haal koersen en wisselkoersen opnieuw op")
     p.set_defaults(func=data_verversen)
 
     args = parser.parse_args()
+    if getattr(args, "zonder_database", False):
+        return args.func(None, args)
     with Session(engine(), expire_on_commit=False) as db:
         return args.func(db, args)
 

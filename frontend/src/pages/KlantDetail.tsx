@@ -280,7 +280,7 @@ export default function KlantDetail() {
             <tbody>
               {rapporten.map((r) => (
                 <tr key={r.id}>
-                  <td>{datum(r.opgesteld_op)}</td>
+                  <td className="datumcel">{datum(r.opgesteld_op)}</td>
                   <td>
                     {r.portefeuille_versie}
                     {r.volgnummer > 1 && <span className="zacht"> (rapport {r.volgnummer})</span>}
@@ -347,7 +347,7 @@ export default function KlantDetail() {
               {geschiedenis.map((g) => (
                 <tr key={g.id}>
                   <td>{g.versie}</td>
-                  <td>{datum(g.vastgelegd_op)}</td>
+                  <td className="datumcel">{datum(g.vastgelegd_op)}</td>
                   <td>{naam(g.risicoprofiel)}</td>
                   <td>{g.horizon_jaren} jaar</td>
                   <td className="getal">{euro(g.inleg_eur)}</td>

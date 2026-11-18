@@ -98,29 +98,14 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     needs: [backend, frontend]
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: portefeuille
-          POSTGRES_PASSWORD: portefeuille
-          POSTGRES_DB: portefeuille
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U portefeuille -d portefeuille"
-          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - name: Image bouwen
         run: docker build -t portefeuille .
-      - name: Container starten en controleren
+      - name: Starten zoals in TESTEN.md
         run: |
-          docker run -d --name app --network host \
-            -e DATABASE_URL=postgresql+psycopg://portefeuille:portefeuille@localhost:5432/portefeuille \
-            -e JWT_GEHEIM=ci-geheim-alleen-voor-de-tests-0123456789abcdef \
-            -e VERSLEUTELSLEUTEL=Y2ktc2xldXRlbC1jaS1zbGV1dGVsLWNpLXNsZXV0ZWw= \
-            portefeuille
+          docker run --rm portefeuille python -m app.cli sleutels-maken > backend/.env
+          docker compose --profile app up -d
           for i in $(seq 1 30); do
             curl -fsS http://localhost:8000/api/gezondheid && break
             sleep 2
@@ -128,7 +113,20 @@ jobs:
           curl -fsS http://localhost:8000/api/gezondheid
           curl -fsS http://localhost:8000/ | grep -q '<div id="root">'
           curl -fsSI http://localhost:8000/ | grep -qi 'content-security-policy'
-          test "$(docker exec app id -u)" = "10001"
-      - name: Logboek van de container bij een fout
+          test "$(docker compose exec -T app id -u)" = "10001"
+          echo "ci-wachtwoord-voor-de-test" | docker compose exec -T app \
+            python -m app.cli adviseur-aanmaken --email ci@voorbeeld.nl --naam CI --rol beheerder
+          docker compose exec -T app python -m app.cli universum-laden
+          curl -fsS -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' \
+            -d '{"email":"ci@voorbeeld.nl","wachtwoord":"ci-wachtwoord-voor-de-test"}' | grep -q access_token
+          # De gegevens blijven bewaard na een herstart.
+          docker compose --profile app restart app
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:8000/api/gezondheid && break
+            sleep 2
+          done
+          curl -fsS -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' \
+            -d '{"email":"ci@voorbeeld.nl","wachtwoord":"ci-wachtwoord-voor-de-test"}' | grep -q access_token
+      - name: Logboek van de containers bij een fout
         if: failure()
-        run: docker logs app
+        run: docker compose --profile app logs

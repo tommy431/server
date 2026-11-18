@@ -740,3 +740,19 @@ main.smal {
 .bezit-tabel .verwijder-kolom {
   width: 5.5em;
 }
+/* Alleen-lezen velden (bijvoorbeeld voor adviseurs bij beheerinstellingen) zien er niet bewerkbaar uit. */
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background: var(--achtergrond);
+  color: var(--tekst);
+  border-color: transparent;
+  cursor: default;
+  opacity: 1;
+}
+.datumcel {
+  white-space: nowrap;
+}
+.logdetails {
+  overflow-wrap: anywhere;
+}

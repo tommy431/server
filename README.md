@@ -18,12 +18,15 @@ Webapplicatie waarmee een beleggingsadviseur een portefeuille op maat samenstelt
 
 ## Starten
 
+Om het programma te testen zonder ontwikkelomgeving: zie [TESTEN.md](TESTEN.md) (alleen Docker
+nodig). Hieronder de ontwikkelomgeving.
+
 Vereist: Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js 20+ en Docker (voor PostgreSQL).
 
 ```bash
 docker compose up -d
 cd backend
-cp ../.env.example .env        # vul JWT_GEHEIM en VERSLEUTELSLEUTEL in
+uv run python -m app.cli sleutels-maken > .env   # sterke JWT_GEHEIM en VERSLEUTELSLEUTEL
 uv sync
 uv run alembic upgrade head
 uv run python -m app.cli adviseur-aanmaken --email jij@voorbeeld.nl --naam "Jouw Naam" --rol beheerder

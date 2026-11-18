@@ -567,7 +567,7 @@ export default function Opvolging() {
               <tbody>
                 {o.evaluaties.map((e) => (
                   <tr key={e.id}>
-                    <td>{datum(e.datum)}</td>
+                    <td className="datumcel">{datum(e.datum)}</td>
                     <td>{UITKOMSTEN[e.uitkomst] ?? e.uitkomst}</td>
                     <td>{e.notitie ?? <span className="zacht">—</span>}</td>
                     <td>{e.door}</td>

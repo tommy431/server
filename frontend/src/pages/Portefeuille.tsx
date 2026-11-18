@@ -603,7 +603,7 @@ export default function Portefeuille() {
         </label>
         {analyse ? (
           <div className={analyseBezig ? "verouderd" : ""}>
-            <Analyse uitkomst={analyse} />
+            <Analyse uitkomst={analyse} kanAanvullen={!verlengen} />
           </div>
         ) : (
           <p className="zacht">
@@ -703,7 +703,7 @@ export default function Portefeuille() {
               {versies.map((v) => (
                 <tr key={v.id}>
                   <td>{v.versie}</td>
-                  <td>{datum(v.vastgelegd_op)}</td>
+                  <td className="datumcel">{datum(v.vastgelegd_op)}</td>
                   <td>{naam(v.risicoprofiel)}</td>
                   <td className="getal">{pct(v.doorrekening.zakelijke_waarden)}</td>
                   <td className="getal">{pctKosten(v.doorrekening.kosten_pct)}</td>

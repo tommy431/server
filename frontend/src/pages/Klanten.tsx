@@ -80,7 +80,7 @@ export default function Klanten() {
                   <>
                     <td>{naam(k.huidig_profiel.risicoprofiel)}</td>
                     <td>{k.huidig_profiel.horizon_jaren} jaar</td>
-                    <td>{datum(k.huidig_profiel.vastgelegd_op)}</td>
+                    <td className="datumcel">{datum(k.huidig_profiel.vastgelegd_op)}</td>
                   </>
                 ) : (
                   <td colSpan={3} className="zacht">
