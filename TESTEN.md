@@ -21,6 +21,14 @@ project.
 
    Het bouwen duurt de eerste keer enkele minuten.
 
+   **Windows (PowerShell):** gebruik voor de tweede regel
+
+   ```powershell
+   docker run --rm portefeuille python -m app.cli sleutels-maken | Out-File -Encoding ascii backend/.env
+   ```
+
+   Met `>` schrijft PowerShell het bestand in een codering die Docker niet leest.
+
 2. Start de database en het programma:
 
    ```bash
