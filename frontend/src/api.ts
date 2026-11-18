@@ -418,8 +418,21 @@ export type Transactie = {
   bedrag: number;
   geschat: boolean;
 };
-export type OverigBezit = { omschrijving: string; isin: string | null; categorie: string; waarde: number; behouden: boolean };
-export type Overigwaarde = OverigBezit & { gewicht: number };
+export type OverigBezit = {
+  omschrijving: string;
+  isin: string | null;
+  categorie: string;
+  waarde: number | null;
+  aantal: number | null;
+  behouden: boolean;
+};
+export type Overigwaarde = OverigBezit & {
+  waarde: number;
+  gewicht: number;
+  koers: number | null;
+  koersdatum: string | null;
+  bron: "koers" | "opgegeven" | "geen";
+};
 export type Evaluatie = { id: number; datum: string; uitkomst: string; notitie: string | null; door: string };
 export type Opvolging = {
   advies: {

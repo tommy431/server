@@ -6,6 +6,8 @@ os.environ["VIER_OGEN"] = "false"
 os.environ["TWEESTAPS_VERPLICHT_BEHEERDER"] = "false"
 # De algemene verzoeklimiet staat uit; test_inloglimieten.py zet hem aan.
 os.environ["LIMIET_VERZOEKEN_PER_MINUUT"] = "0"
+# Geen echte koersen van Yahoo in de tests; tests die ze nodig hebben gebruiken een nepbron.
+os.environ["MARKTKOERSEN_OPHALEN"] = "false"
 os.environ["VERSLEUTELSLEUTEL"] = "dGVzdHNsZXV0ZWwtdGVzdHNsZXV0ZWwtdGVzdHNsZXU="
 
 import pytest

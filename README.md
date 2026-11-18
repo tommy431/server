@@ -200,6 +200,12 @@ Via **Opvolging** bij een klant, en het overzicht **Signalen** in het menu.
   zijn geheel verkocht tegen de opgegeven waarde (aangeduid als schatting), tenzij ‘Behouden’ is
   aangevinkt: dan blijven ze staan, gelden de gewichten van het advies voor de rest van het vermogen
   en volgt er geen signaal.
+- **Koersen van overig bezit:** met ISIN en aantal zoekt het programma het effect op bij Yahoo
+  Finance en haalt het de laatste slotkoers op, omgerekend naar euro's met de ECB-wisselkoers
+  (pence en centen naar de hoofdmunt). Dat gebeurt bij het opslaan, met de knop ‘Koersen ophalen’
+  en bij `data-verversen`. Is er geen koers van de laatste tien dagen, dan geldt de opgegeven
+  waarde; zonder beide is er geen herbalanceringsvoorstel. Uitzetten met
+  `MARKTKOERSEN_OPHALEN=false` (gebeurt in de tests).
 - **Vergelijking met het advies:** per fonds het werkelijke gewicht naast het geadviseerde, en per
   beleggingscategorie het gewicht tegen de bandbreedtes van de laatst vastgelegde portefeuilleversie.
 - **Herbalanceringsvoorstel:** terug naar de gewichten van het advies, in hele stukken. Eerst

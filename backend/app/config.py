@@ -30,6 +30,8 @@ class Instellingen(BaseSettings):
     # Algemene limiet op het aantal verzoeken per IP-adres per minuut; 0 schakelt hem uit.
     # Ruim gekozen, omdat een kantoor vaak met één IP-adres naar buiten gaat.
     limiet_verzoeken_per_minuut: int = 1200
+    # Koersen van overig bezit (buiten de fondsenlijst) ophalen bij Yahoo; uit in testomgevingen.
+    marktkoersen_ophalen: bool = True
 
     @field_validator("jwt_geheim")
     @classmethod

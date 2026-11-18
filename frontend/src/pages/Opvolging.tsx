@@ -17,9 +17,24 @@ const UITKOMSTEN: Record<string, string> = {
 };
 
 type Regel = { isin: string; aantal: string };
-type OverigRegel = { omschrijving: string; isin: string; categorie: string; waarde: string; behouden: boolean };
+type OverigRegel = {
+  omschrijving: string;
+  isin: string;
+  categorie: string;
+  aantal: string;
+  waarde: string;
+  behouden: boolean;
+};
 const CATEGORIEEN = ["aandelen", "obligaties", "vastgoed", "grondstoffen", "liquiditeiten", "overig"];
-const leegOverig = (): OverigRegel => ({ omschrijving: "", isin: "", categorie: "", waarde: "", behouden: false });
+const leegOverig = (): OverigRegel => ({
+  omschrijving: "",
+  isin: "",
+  categorie: "",
+  aantal: "",
+  waarde: "",
+  behouden: false,
+});
+const alsTekst = (n: number | null | undefined) => (n == null ? "" : String(n).replace(".", ","));
 /** Leest "1.250", "1250,5" en "12.50" als 1250, 1250,5 en 12,5. */
 function getal(tekst: string): number {
   const t = tekst.trim().replace(/[\s\u00a0]/g, "");
@@ -38,6 +53,7 @@ export default function Opvolging() {
   const [bezitFormulier, setBezitFormulier] = useState(false);
   const [regels, setRegels] = useState<Regel[]>([]);
   const [overig, setOverig] = useState<OverigRegel[]>([]);
+  const [bezig, setBezig] = useState(false);
   const [kas, setKas] = useState("0");
   const [peildatum, setPeildatum] = useState(vandaag());
   const [inleesMeldingen, setInleesMeldingen] = useState<string[]>([]);
@@ -76,7 +92,8 @@ export default function Opvolging() {
         omschrijving: x.omschrijving,
         isin: x.isin ?? "",
         categorie: x.categorie,
-        waarde: String(x.waarde).replace(".", ","),
+        aantal: alsTekst(x.aantal),
+        waarde: alsTekst(x.waarde),
         behouden: x.behouden,
       })),
     );
@@ -99,7 +116,7 @@ export default function Opvolging() {
     try {
       const r = await api<{
         posities: { isin: string; aantal: number }[];
-        overig: { isin: string; omschrijving: string; waarde_eur: number | null }[];
+        overig: { isin: string; omschrijving: string; aantal: number; waarde_eur: number | null }[];
         meldingen: string[];
       }>(
         `/klanten/${id}/bezit/inlezen`,
@@ -112,7 +129,8 @@ export default function Opvolging() {
             ...leegOverig(),
             omschrijving: x.omschrijving,
             isin: x.isin,
-            waarde: x.waarde_eur === null ? "" : String(x.waarde_eur).replace(".", ","),
+            aantal: alsTekst(x.aantal),
+            waarde: alsTekst(x.waarde_eur),
           })),
         );
       }
@@ -124,6 +142,19 @@ export default function Opvolging() {
       ]);
     } catch (f) {
       setFouten(meldingenVan(f));
+    }
+  }
+
+  async function koersenOphalen() {
+    setBezig(true);
+    try {
+      const r = await api<{ opgehaald: number; fouten: string[] }>(`/klanten/${id}/koersen`, { methode: "POST" });
+      await laad();
+      setFouten(r.fouten.map((f) => `Koers niet opgehaald: ${f}`));
+    } catch (f) {
+      setFouten(meldingenVan(f));
+    } finally {
+      setBezig(false);
     }
   }
 
@@ -139,7 +170,8 @@ export default function Opvolging() {
         omschrijving: x.omschrijving.trim(),
         isin: x.isin.trim().toUpperCase() || null,
         categorie: x.categorie,
-        waarde_eur: getal(x.waarde),
+        aantal: x.aantal.trim() ? getal(x.aantal) : null,
+        waarde_eur: x.waarde.trim() ? getal(x.waarde) : null,
         behouden: x.behouden,
       }));
     try {
@@ -211,7 +243,14 @@ export default function Opvolging() {
           <div className="kop">
             <h2>Werkelijk bezit</h2>
             {actief && !bezitFormulier && (
-              <button onClick={openBezit}>{o.bezit ? "Nieuwe opgave" : "Bezit vastleggen"}</button>
+              <div className="rij">
+                {o.bezit?.overig.some((x) => x.isin && x.aantal) && (
+                  <button className="tweede" onClick={() => void koersenOphalen()} disabled={bezig}>
+                    {bezig ? "Koersen ophalen…" : "Koersen ophalen"}
+                  </button>
+                )}
+                <button onClick={openBezit}>{o.bezit ? "Nieuwe opgave" : "Bezit vastleggen"}</button>
+              </div>
             )}
           </div>
 
@@ -292,8 +331,9 @@ export default function Opvolging() {
               </p>
               <h3>Overig bezit</h3>
               <p className="zacht">
-                Beleggingen die niet in de fondsenlijst staan, zoals losse aandelen of andere fondsen, met de waarde
-                van het depotoverzicht. Ze tellen mee in het vermogen en de verdeling. Wil de klant iets houden, vink
+                Beleggingen die niet in de fondsenlijst staan, zoals losse aandelen of andere fondsen. Met ISIN en
+                aantal wordt de actuele koers opgehaald; lukt dat niet, dan geldt de opgegeven waarde. Ze tellen mee in
+                het vermogen en de verdeling. Wil de klant iets houden, vink
                 dan &lsquo;Behouden&rsquo; aan: het blijft dan buiten het herbalanceren.
               </p>
               {overig.map((x, i) => {
@@ -321,8 +361,18 @@ export default function Opvolging() {
                       </select>
                     </label>
                     <label>
+                      Aantal (optioneel)
+                      <input inputMode="decimal" className="klein-bedrag" value={x.aantal} onChange={(e) => zet({ aantal: e.target.value })} />
+                    </label>
+                    <label>
                       Waarde (€)
-                      <input inputMode="decimal" className="klein-bedrag" value={x.waarde} required onChange={(e) => zet({ waarde: e.target.value })} />
+                      <input
+                        inputMode="decimal"
+                        className="klein-bedrag"
+                        value={x.waarde}
+                        required={!(x.isin.trim() && x.aantal.trim())}
+                        onChange={(e) => zet({ waarde: e.target.value })}
+                      />
                     </label>
                     <label className="vinkje">
                       <input type="checkbox" checked={x.behouden} onChange={(e) => zet({ behouden: e.target.checked })} />
@@ -388,11 +438,17 @@ export default function Opvolging() {
                       <td>
                         {x.omschrijving}{" "}
                         <span className="zacht">
-                          (overig{x.behouden ? ", behouden" : ""}, waarde opgegeven)
+                          (overig{x.behouden ? ", behouden" : ""},{" "}
+                          {x.bron === "koers"
+                            ? `koers van ${datum(x.koersdatum!)}`
+                            : x.bron === "opgegeven"
+                              ? "waarde opgegeven"
+                              : "geen koers en geen waarde"}
+                          )
                         </span>
                       </td>
-                      <td className="alleen-breed" />
-                      <td className="alleen-breed" />
+                      <td className="getal alleen-breed">{x.aantal === null ? "" : stuks(x.aantal)}</td>
+                      <td className="getal alleen-breed">{x.koers === null ? "" : koersEuro(x.koers)}</td>
                       <td className="getal">{euro(x.waarde)}</td>
                       <td className="getal">{pct(x.gewicht)}</td>
                       <td className="getal">{x.behouden ? <span className="zacht">—</span> : pct(0)}</td>

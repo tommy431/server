@@ -84,6 +84,7 @@ test("bezit inlezen uit een depotoverzicht", async ({ page }) => {
   await expect(apple.getByLabel("Omschrijving")).toHaveValue("Apple");
   await expect(apple.getByLabel("ISIN (optioneel)")).toHaveValue("US0378331005");
   await expect(apple.getByLabel("Waarde (€)")).toHaveValue("2000");
+  await expect(apple.getByLabel("Aantal (optioneel)")).toHaveValue("10");
   await apple.getByLabel("Categorie").selectOption("aandelen");
   await page.getByRole("button", { name: "Opslaan" }).click();
 

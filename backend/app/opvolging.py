@@ -36,9 +36,16 @@ class Overig:
 
     omschrijving: str
     categorie: str
-    waarde: float
+    waarde: float | None  # opgegeven waarde; None als die ontbreekt
     behouden: bool = False  # de klant wil dit houden: buiten het herbalanceren
     isin: str | None = None
+    aantal: float | None = None
+    koers: float | None = None  # marktkoers in euro's, als bekend
+    koersdatum: date | None = None
+
+    @property
+    def marktwaarde(self) -> float | None:
+        return self.aantal * self.koers if self.aantal and self.koers else None
 
 
 @dataclass(frozen=True)
@@ -49,6 +56,10 @@ class Overigwaarde:
     waarde: float
     gewicht: int  # basispunten van het totaal
     behouden: bool
+    aantal: float | None = None
+    koers: float | None = None
+    koersdatum: date | None = None
+    bron: str = "opgegeven"  # "koers", "opgegeven", of "geen" als er geen waarde is
 
 
 @dataclass(frozen=True)
@@ -122,7 +133,16 @@ def waardeer(
             datum, koers = None, None
             zonder_koers.append(f.naam if f else isin)
         regels.append((isin, f, aantal, koers, datum, aantal * koers if koers else 0.0))
-    totaal = kas + sum(r[5] for r in regels) + sum(o.waarde for o in overig)
+    overig_waarden = []
+    for o in overig:
+        if o.marktwaarde is not None:
+            overig_waarden.append((o, o.marktwaarde, "koers"))
+        elif o.waarde is not None:
+            overig_waarden.append((o, o.waarde, "opgegeven"))
+        else:
+            overig_waarden.append((o, 0.0, "geen"))
+            zonder_koers.append(o.omschrijving)
+    totaal = kas + sum(r[5] for r in regels) + sum(w for _, w, _ in overig_waarden)
 
     posities = [
         Positiewaarde(
@@ -159,8 +179,8 @@ def waardeer(
     per_categorie: dict[str, float] = {}
     for p in posities:
         per_categorie[p.categorie] = per_categorie.get(p.categorie, 0.0) + p.waarde
-    for o in overig:
-        per_categorie[o.categorie] = per_categorie.get(o.categorie, 0.0) + o.waarde
+    for o, waarde, _ in overig_waarden:
+        per_categorie[o.categorie] = per_categorie.get(o.categorie, 0.0) + waarde
     per_categorie["liquiditeiten"] = per_categorie.get("liquiditeiten", 0.0) + kas
     return Waardering(
         totaal=totaal,
@@ -170,9 +190,18 @@ def waardeer(
         zonder_koers=zonder_koers,
         overig=[
             Overigwaarde(
-                o.omschrijving, o.isin, o.categorie, o.waarde, _bp(o.waarde, totaal), o.behouden
+                o.omschrijving,
+                o.isin,
+                o.categorie,
+                waarde,
+                _bp(waarde, totaal),
+                o.behouden,
+                o.aantal,
+                o.koers if bron == "koers" else None,
+                o.koersdatum if bron == "koers" else None,
+                bron,
             )
-            for o in sorted(overig, key=lambda o: -o.waarde)
+            for o, waarde, bron in sorted(overig_waarden, key=lambda x: -x[1])
         ],
     )
 
@@ -197,7 +226,16 @@ def herbalanceer(
     for o in w.overig:
         if not o.behouden and o.waarde >= min_bedrag:
             transacties.append(
-                Transactie(o.isin, o.omschrijving, "verkoop", None, None, o.waarde, geschat=True)
+                # Met een marktkoers: alle stukken tegen die koers; anders de opgegeven waarde.
+                Transactie(
+                    o.isin,
+                    o.omschrijving,
+                    "verkoop",
+                    o.aantal if o.bron == "koers" else None,
+                    o.koers,
+                    o.waarde,
+                    geschat=o.bron != "koers",
+                )
             )
             kas += o.waarde
     na = {p.isin: p.aantal for p in w.posities}

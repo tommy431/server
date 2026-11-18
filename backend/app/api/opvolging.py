@@ -1,14 +1,17 @@
 from dataclasses import asdict
 from datetime import date
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from app.api.afhankelijkheden import Db, Ingelogd
 from app.api.klanten import _eigen_klant
 from app.bezitimport import MAX_TEKENS, isin_geldig, lees_bezit
+from app.config import instellingen
+from app.data.bronnen import BronFout, EcbBron, YahooBron
+from app.data.verversen import ververs_marktkoersen, wisselvaluta
 from app.logboek import leg_vast
 from app.models import (
     Adviseur,
@@ -18,8 +21,10 @@ from app.models import (
     Klant,
     Klantprofiel,
     Koers,
+    Marktkoers,
     Portefeuille,
     Positie,
+    Wisselkoers,
 )
 from app.opvolging import Overig, herbalanceer, signalen, waardeer
 from app.portefeuille import Fonds
@@ -38,7 +43,8 @@ class OverigIn(BaseModel):
     categorie: Literal[
         "aandelen", "obligaties", "vastgoed", "grondstoffen", "liquiditeiten", "overig"
     ]
-    waarde_eur: float = Field(gt=0, le=1e10)
+    waarde_eur: float | None = Field(default=None, gt=0, le=1e10)
+    aantal: float | None = Field(default=None, gt=0, le=1e9)
     behouden: bool = False
 
 
@@ -62,6 +68,7 @@ class IngelezenRegel(BaseModel):
 class OverigVoorstel(BaseModel):
     isin: str
     omschrijving: str
+    aantal: float
     waarde_eur: float | None
 
 
@@ -144,6 +151,73 @@ def _laatste_koersen(db: Db) -> dict[str, tuple[date, float]]:
     return {isin: (d, slot) for isin, d, slot in rijen if valuta.get(isin) == "EUR"}
 
 
+MARKTKOERS_MAX_DAGEN = 10  # oudere koersen gebruiken we niet: dan geldt de opgegeven waarde
+
+
+def _koers_eur(db: Db, mk: Marktkoers) -> float | None:
+    """Marktkoers in euro's met de laatste ECB-wisselkoers; pence en centen naar de hoofdmunt."""
+    if mk.koers is None or mk.valuta is None:
+        return None
+    koers = mk.koers / 100 if mk.valuta in {"GBp", "GBX", "ZAc", "ILA"} else mk.koers
+    munt = wisselvaluta(mk.valuta)
+    if munt == "EUR":
+        return koers
+    wissel = db.scalar(
+        select(Wisselkoers.koers)
+        .where(Wisselkoers.valuta == munt)
+        .order_by(Wisselkoers.datum.desc())
+        .limit(1)
+    )
+    return koers / wissel if wissel else None
+
+
+def _overig(db: Db, regels: list[dict], vandaag: date | None = None) -> list[Overig]:
+    vandaag = vandaag or date.today()
+    uit = []
+    for o in regels:
+        koers = koersdatum = None
+        mk = db.get(Marktkoers, o["isin"]) if o.get("isin") else None
+        if mk and mk.datum and (vandaag - mk.datum).days <= MARKTKOERS_MAX_DAGEN:
+            koers, koersdatum = _koers_eur(db, mk), mk.datum
+        uit.append(
+            Overig(
+                o["omschrijving"],
+                o["categorie"],
+                o.get("waarde"),
+                o["behouden"],
+                o.get("isin"),
+                o.get("aantal"),
+                koers,
+                koersdatum if koers else None,
+            )
+        )
+    return uit
+
+
+class _GeenBron:
+    """Bron die niets ophaalt, als het ophalen van marktkoersen uit staat."""
+
+    naam = "geen"
+
+    def zoek_isin(self, isin: str):
+        raise BronFout("Het ophalen van marktkoersen staat uit")
+
+    def haal_koersen(self, symbool: str, vanaf: date):
+        raise BronFout("Het ophalen van marktkoersen staat uit")
+
+    def haal_wisselkoersen(self, valuta: list[str], vanaf: date):
+        raise BronFout("Het ophalen van marktkoersen staat uit")
+
+
+def koersbronnen() -> tuple:
+    if not instellingen().marktkoersen_ophalen:
+        return _GeenBron(), _GeenBron()
+    return YahooBron(), EcbBron()
+
+
+Bronnen = Annotated[tuple, Depends(koersbronnen)]
+
+
 def _toestand(db: Db, klant: Klant, vandaag: date, koersen=None, fondsen=None) -> dict:
     profiel = db.scalar(
         select(Klantprofiel)
@@ -183,10 +257,7 @@ def _toestand(db: Db, klant: Klant, vandaag: date, koersen=None, fondsen=None) -
             koersen if koersen is not None else _laatste_koersen(db),
             gewichten,
             fondsen or _fondsen(db),
-            [
-                Overig(o["omschrijving"], o["categorie"], o["waarde"], o["behouden"], o.get("isin"))
-                for o in bezit.overig or []
-            ],
+            _overig(db, bezit.overig or []),
         )
     profiel_na_advies = bool(
         profiel and advies and db.get(Klantprofiel, advies.klantprofiel_id).versie < profiel.versie
@@ -271,7 +342,9 @@ def opvolging(klant_id: int, db: Db, adviseur: Ingelogd) -> OpvolgingUit:
 
 
 @router.post("/klanten/{klant_id}/bezit", status_code=status.HTTP_201_CREATED)
-def leg_bezit_vast(klant_id: int, invoer: BezitIn, db: Db, adviseur: Ingelogd) -> dict:
+def leg_bezit_vast(
+    klant_id: int, invoer: BezitIn, db: Db, adviseur: Ingelogd, bronnen: Bronnen
+) -> dict:
     klant = _eigen_klant(db, adviseur, klant_id)
     if klant.gearchiveerd:
         raise HTTPException(status.HTTP_409_CONFLICT, "Deze klant is gearchiveerd")
@@ -298,6 +371,11 @@ def leg_bezit_vast(klant_id: int, invoer: BezitIn, db: Db, adviseur: Ingelogd) -
                 status.HTTP_422_UNPROCESSABLE_CONTENT,
                 f"Ongeldig ISIN bij {o.omschrijving}: {o.isin}",
             )
+        if o.waarde_eur is None and not (o.isin and o.aantal):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                f"Geef bij {o.omschrijving} een waarde op, of een ISIN met het aantal stukken",
+            )
     opgave = Bezitsopgave(
         klant_id=klant.id,
         peildatum=invoer.peildatum,
@@ -309,6 +387,7 @@ def leg_bezit_vast(klant_id: int, invoer: BezitIn, db: Db, adviseur: Ingelogd) -
                 "isin": o.isin or None,
                 "categorie": o.categorie,
                 "waarde": o.waarde_eur,
+                "aantal": o.aantal,
                 "behouden": o.behouden,
             }
             for o in invoer.overig
@@ -330,7 +409,29 @@ def leg_bezit_vast(klant_id: int, invoer: BezitIn, db: Db, adviseur: Ingelogd) -
         },
     )
     db.commit()
+    # Koersen van nieuw overig bezit meteen ophalen; mislukt dat, dan geldt de opgegeven waarde.
+    isins = {o.isin for o in invoer.overig if o.isin and o.aantal}
+    if isins:
+        ververs_marktkoersen(db, *bronnen, isins, alleen_ontbrekend=True)
     return {"id": opgave.id}
+
+
+@router.post("/klanten/{klant_id}/koersen")
+def koersen_ophalen(klant_id: int, db: Db, adviseur: Ingelogd, bronnen: Bronnen) -> dict:
+    """Haalt de koersen van het overige bezit van deze klant opnieuw op."""
+    klant = _eigen_klant(db, adviseur, klant_id)
+    bezit = db.scalar(
+        select(Bezitsopgave)
+        .where(Bezitsopgave.klant_id == klant.id)
+        .order_by(Bezitsopgave.id.desc())
+        .limit(1)
+    )
+    isins = {o["isin"] for o in (bezit.overig or []) if o.get("isin")} if bezit else set()
+    resultaten = ververs_marktkoersen(db, *bronnen, isins) if isins else []
+    return {
+        "opgehaald": sum(r.opgeslagen for r in resultaten if r.onderdeel != "wisselkoersen"),
+        "fouten": [r.fout for r in resultaten if r.fout],
+    }
 
 
 @router.post("/klanten/{klant_id}/bezit/inlezen", response_model=InlezenUit)
@@ -358,7 +459,10 @@ def bezit_inlezen(klant_id: int, invoer: InlezenIn, db: Db, adviseur: Ingelogd) 
         ],
         overig=[
             OverigVoorstel(
-                isin=i, omschrijving=r.omschrijvingen.get(i, i), waarde_eur=r.waarden.get(i)
+                isin=i,
+                omschrijving=r.omschrijvingen.get(i, i),
+                aantal=r.posities[i],
+                waarde_eur=r.waarden.get(i),
             )
             for i in onbekend
         ],

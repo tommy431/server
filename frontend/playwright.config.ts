@@ -14,6 +14,7 @@ const omgeving = {
   TWEESTAPS_VERPLICHT_BEHEERDER: "false",
   // Alle tests komen van hetzelfde adres; de limiet zelf wordt in de backendtests getest.
   LIMIET_VERZOEKEN_PER_MINUUT: "0",
+  MARKTKOERSEN_OPHALEN: "false",
 };
 
 export default defineConfig({

@@ -92,6 +92,21 @@ class YahooBron:
             valuta=meta.get("currency", ""), punten=sorted(per_dag.values(), key=lambda p: p.datum)
         )
 
+    def zoek_isin(self, isin: str) -> tuple[str, str] | None:
+        """Zoekt het Yahoo-symbool en de naam bij een ISIN; None als er niets bruikbaars is."""
+        try:
+            antwoord = self._client.get(
+                "https://query1.finance.yahoo.com/v1/finance/search",
+                params={"q": isin, "quotesCount": 5, "newsCount": 0},
+            )
+            inhoud = antwoord.json()
+        except (httpx.HTTPError, ValueError) as fout:
+            raise BronFout(f"{isin}: Yahoo niet bereikbaar ({fout})") from fout
+        for q in inhoud.get("quotes") or []:
+            if q.get("symbol") and q.get("quoteType") in {"EQUITY", "ETF", "MUTUALFUND"}:
+                return q["symbol"], q.get("longname") or q.get("shortname") or q["symbol"]
+        return None
+
 
 class EcbBron:
     """Referentiekoersen van de ECB: eenheden vreemde valuta per 1 euro."""

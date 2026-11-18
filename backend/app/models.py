@@ -146,6 +146,21 @@ class Wisselkoers(Basis):
     opgehaald_op: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class Marktkoers(Basis):
+    """Laatste koers van een effect buiten de fondsenlijst (overig bezit), per ISIN."""
+
+    __tablename__ = "marktkoers"
+
+    isin: Mapped[str] = mapped_column(String(12), primary_key=True)
+    symbool: Mapped[str | None] = mapped_column(String(30))  # None: niet gevonden
+    naam: Mapped[str | None] = mapped_column(String(200))
+    valuta: Mapped[str | None] = mapped_column(String(3))
+    datum: Mapped[date | None] = mapped_column(Date)
+    koers: Mapped[float | None] = mapped_column(Float)
+    bron: Mapped[str] = mapped_column(String(30))
+    opgehaald_op: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class Risicoprofiel(Basis):
     __tablename__ = "risicoprofiel"
 

@@ -1,6 +1,7 @@
 # ruff: noqa: F811  (klant_id is een fixture uit test_portefeuille_api)
 from datetime import UTC, date, datetime, timedelta
 
+import pytest
 from sqlalchemy import select
 
 from app.models import Instrument, Koers, Logboek
@@ -175,7 +176,7 @@ def test_bezit_inlezen_uit_csv(ingelogd, klant_id, db):
     assert [(p["isin"], p["aantal"]) for p in r.json()["posities"]] == [(WERELD, 1250)]
     # Zonder waardekolom: de waarde vult de adviseur zelf in.
     assert r.json()["overig"] == [
-        {"isin": "US0378331005", "omschrijving": "Apple", "waarde_eur": None}
+        {"isin": "US0378331005", "omschrijving": "Apple", "aantal": 10, "waarde_eur": None}
     ]
     assert r.json()["meldingen"][0].startswith("1 positie(s) buiten de fondsenlijst")
     assert "vul de waarde in" in r.json()["meldingen"][0]
@@ -254,3 +255,154 @@ def test_overig_bezit_wordt_gecontroleerd(ingelogd, klant_id):
     assert met(goed | {"waarde_eur": 0}).status_code == 422
     assert met(goed | {"omschrijving": ""}).status_code == 422
     assert met(goed).status_code == 201
+
+
+class NepBronnen:
+    """Yahoo en ECB zonder netwerk: Apple in dollars, Vodafone in pence."""
+
+    naam = "test"
+
+    def __init__(self, koersdatum=None, mislukt=False):
+        self.koersdatum = koersdatum or date.today() - timedelta(days=1)
+        self.mislukt = mislukt
+        self.gezocht = []
+
+    def zoek_isin(self, isin):
+        from app.data.bronnen import BronFout
+
+        self.gezocht.append(isin)
+        if self.mislukt:
+            raise BronFout("Yahoo niet bereikbaar")
+        return {APPLE: ("AAPL", "Apple Inc."), VODAFONE: ("VOD.L", "Vodafone Group")}.get(isin)
+
+    def haal_koersen(self, symbool, vanaf):
+        from app.data.bronnen import Koerspunt, Koersreeks
+
+        valuta, slot = {"AAPL": ("USD", 200.0), "VOD.L": ("GBp", 80.0)}[symbool]
+        return Koersreeks(valuta, [Koerspunt(self.koersdatum, slot, slot)])
+
+    def haal_wisselkoersen(self, valuta, vanaf):
+        koersen = {"USD": 1.25, "GBP": 0.8}
+        return {v: {date.today() - timedelta(days=1): koersen[v]} for v in valuta}
+
+
+APPLE, VODAFONE = "US0378331005", "GB00BH4HKS39"
+
+
+@pytest.fixture
+def nep(client):
+    from app.api.opvolging import koersbronnen
+    from app.main import app
+
+    bronnen = NepBronnen()
+    app.dependency_overrides[koersbronnen] = lambda: (bronnen, bronnen)
+    return bronnen
+
+
+def _bezit_overig(ingelogd, kid, overig):
+    return ingelogd.post(
+        f"/klanten/{kid}/bezit",
+        json={
+            "peildatum": date.today().isoformat(),
+            "posities": [],
+            "overig": overig,
+            "kas_eur": 0,
+        },
+    )
+
+
+def test_overig_bezit_gewaardeerd_met_marktkoers_in_euro(ingelogd, klant_id, nep, db):
+    _advies(ingelogd, klant_id)
+    _koers(db, WERELD, 100.0)
+    _koers(db, GELD, 10.0)
+    r = _bezit_overig(
+        ingelogd,
+        klant_id,
+        [
+            # 10 × $ 200 / 1,25 = € 1.600; de opgegeven waarde telt dan niet.
+            {
+                "omschrijving": "Apple",
+                "isin": APPLE,
+                "aantal": 10,
+                "waarde_eur": 999,
+                "categorie": "aandelen",
+            },
+            # 1.000 × 80 pence = £ 800 / 0,8 = € 1.000.
+            {"omschrijving": "Vodafone", "isin": VODAFONE, "aantal": 1000, "categorie": "aandelen"},
+        ],
+    )
+    assert r.status_code == 201, r.text
+    assert sorted(nep.gezocht) == sorted([APPLE, VODAFONE])
+    o = ingelogd.get(f"/klanten/{klant_id}/opvolging").json()
+    overig = {x["omschrijving"]: x for x in o["waardering"]["overig"]}
+    assert overig["Apple"]["waarde"] == pytest.approx(1600) and overig["Apple"]["bron"] == "koers"
+    assert overig["Apple"]["koers"] == pytest.approx(160)
+    assert overig["Vodafone"]["waarde"] == pytest.approx(1000)
+    assert o["waardering"]["totaal"] == pytest.approx(2600)
+    # Verkoop tegen de marktkoers: het aantal is bekend en het bedrag geen schatting.
+    verkoop = {t["naam"]: t for t in o["herbalancering"]["transacties"] if t["actie"] == "verkoop"}
+    assert verkoop["Apple"]["aantal"] == 10 and not verkoop["Apple"]["geschat"]
+
+
+def test_zonder_koers_geldt_de_opgegeven_waarde(ingelogd, klant_id, client):
+    from app.api.opvolging import koersbronnen
+    from app.main import app
+
+    _advies(ingelogd, klant_id)
+    for bronnen, verwacht in [
+        (NepBronnen(mislukt=True), "opgegeven"),
+        (NepBronnen(koersdatum=date.today() - timedelta(days=30)), "opgegeven"),
+    ]:
+        app.dependency_overrides[koersbronnen] = lambda b=bronnen: (b, b)
+        r = _bezit_overig(
+            ingelogd,
+            klant_id,
+            [
+                {
+                    "omschrijving": "Apple",
+                    "isin": APPLE,
+                    "aantal": 10,
+                    "waarde_eur": 1500,
+                    "categorie": "aandelen",
+                }
+            ],
+        )
+        assert r.status_code == 201
+        ingelogd.post(f"/klanten/{klant_id}/koersen")
+        x = ingelogd.get(f"/klanten/{klant_id}/opvolging").json()["waardering"]["overig"][0]
+        assert (x["bron"], x["waarde"]) == (verwacht, 1500)
+
+
+def test_zonder_koers_en_zonder_waarde_geen_voorstel(ingelogd, klant_id, client):
+    from app.api.opvolging import koersbronnen
+    from app.main import app
+
+    _advies(ingelogd, klant_id)
+    b = NepBronnen(mislukt=True)
+    app.dependency_overrides[koersbronnen] = lambda: (b, b)
+    r = _bezit_overig(
+        ingelogd,
+        klant_id,
+        [{"omschrijving": "Apple", "isin": APPLE, "aantal": 10, "categorie": "aandelen"}],
+    )
+    assert r.status_code == 201
+    o = ingelogd.get(f"/klanten/{klant_id}/opvolging").json()
+    assert o["waardering"]["overig"][0]["bron"] == "geen"
+    assert "geen_koers" in codes(o) and o["herbalancering"] is None
+
+
+def test_overig_zonder_waarde_en_zonder_aantal_geweigerd(ingelogd, klant_id, nep):
+    r = _bezit_overig(
+        ingelogd, klant_id, [{"omschrijving": "Apple", "isin": APPLE, "categorie": "aandelen"}]
+    )
+    assert r.status_code == 422 and "waarde op, of een ISIN met het aantal" in r.json()["detail"]
+
+
+def test_koersen_opnieuw_ophalen(ingelogd, klant_id, nep):
+    _bezit_overig(
+        ingelogd,
+        klant_id,
+        [{"omschrijving": "Apple", "isin": APPLE, "aantal": 10, "categorie": "aandelen"}],
+    )
+    r = ingelogd.post(f"/klanten/{klant_id}/koersen").json()
+    assert r == {"opgehaald": 1, "fouten": []}

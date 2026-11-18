@@ -1,14 +1,14 @@
 """Koersen en wisselkoersen ophalen, controleren en opslaan."""
 
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import delete, insert, select
 from sqlalchemy.orm import Session
 
 from app.data.bronnen import BronFout, EcbBron, Koersbron, Koerspunt, haal_kortlopende_rente
 from app.data.kwaliteit import Bevinding, controleer_reeks
-from app.models import Instrument, Koers, Rente, Wisselkoers
+from app.models import Bezitsopgave, Instrument, Koers, Marktkoers, Rente, Wisselkoers
 
 BEGIN_HISTORIE = date(2005, 1, 1)
 
@@ -74,7 +74,11 @@ def ververs_instrument(
 def ververs_wisselkoersen(db: Session, ecb: EcbBron) -> Resultaat:
     resultaat = Resultaat("wisselkoersen")
     # Yahoo noteert Londense fondsen soms in pence ("GBp"); de wisselkoers is die van GBP.
-    valuta = sorted({v.upper() for v in db.scalars(select(Instrument.valuta).distinct())} - {"EUR"})
+    valuta = sorted(
+        {v.upper() for v in db.scalars(select(Instrument.valuta).distinct())}
+        | {wisselvaluta(v) for v in db.scalars(select(Marktkoers.valuta).distinct()) if v}
+    )
+    valuta = [v for v in valuta if v != "EUR"]
     if not valuta:
         return resultaat
     try:
@@ -93,6 +97,84 @@ def ververs_wisselkoersen(db: Session, ecb: EcbBron) -> Resultaat:
     db.commit()
     resultaat.opgeslagen = len(rijen)
     return resultaat
+
+
+def wisselvaluta(valuta: str) -> str:
+    """Valuta voor de wisselkoers: pence (GBp, GBX) en Zuid-Afrikaanse cent (ZAc) horen bij de hoofdmunt."""
+    return {"GBP": "GBP", "GBX": "GBP", "ZAC": "ZAR", "ILA": "ILS"}.get(
+        valuta.upper(), valuta.upper()
+    )
+
+
+def isins_overig_bezit(db: Session) -> set[str]:
+    """ISIN's van overig bezit in de laatste opgave per klant."""
+    laatste: dict[int, Bezitsopgave] = {}
+    for b in db.scalars(select(Bezitsopgave).order_by(Bezitsopgave.id)):
+        laatste[b.klant_id] = b
+    return {o["isin"] for b in laatste.values() for o in b.overig or [] if o.get("isin")}
+
+
+def ververs_marktkoersen(
+    db: Session, bron, ecb: EcbBron, isins: set[str], alleen_ontbrekend: bool = False
+) -> list[Resultaat]:
+    """Haalt de laatste koers van overig bezit op, en de wisselkoers als die nog ontbreekt."""
+    resultaten = []
+    nu = datetime.now(UTC)
+    for isin in sorted(isins):
+        r = Resultaat(isin)
+        rij = db.get(Marktkoers, isin)
+        if rij is not None and alleen_ontbrekend and rij.koers is not None:
+            continue
+        try:
+            if rij is None or rij.symbool is None:
+                gevonden = bron.zoek_isin(isin)
+                if rij is None:
+                    rij = Marktkoers(isin=isin, bron=bron.naam, opgehaald_op=nu)
+                    db.add(rij)
+                if gevonden is None:
+                    rij.opgehaald_op = nu
+                    r.fout = f"{isin}: geen koers gevonden"
+                    resultaten.append(r)
+                    continue
+                rij.symbool, rij.naam = gevonden
+            reeks = bron.haal_koersen(rij.symbool, date.today() - timedelta(days=14))
+            if not reeks.punten:
+                raise BronFout(f"{isin}: geen recente koers")
+            laatste = reeks.punten[-1]
+            rij.valuta, rij.datum, rij.koers = reeks.valuta or None, laatste.datum, laatste.slot
+            rij.bron, rij.opgehaald_op = bron.naam, nu
+            r.opgeslagen = 1
+        except BronFout as fout:
+            r.fout = str(fout)
+        resultaten.append(r)
+    db.commit()
+
+    # Ontbrekende wisselkoersen voor deze valuta's: alleen de laatste weken.
+    nodig = {
+        wisselvaluta(v)
+        for v in db.scalars(select(Marktkoers.valuta).where(Marktkoers.isin.in_(isins)))
+        if v and wisselvaluta(v) != "EUR"
+    }
+    bekend = set(db.scalars(select(Wisselkoers.valuta).distinct()))
+    ontbrekend = sorted(nodig - bekend)
+    if ontbrekend:
+        r = Resultaat("wisselkoersen")
+        try:
+            koersen = ecb.haal_wisselkoersen(ontbrekend, date.today() - timedelta(days=14))
+            db.execute(
+                insert(Wisselkoers),
+                [
+                    {"valuta": v, "datum": d, "koers": k, "bron": ecb.naam, "opgehaald_op": nu}
+                    for v, per_dag in koersen.items()
+                    for d, k in per_dag.items()
+                ],
+            )
+            db.commit()
+            r.opgeslagen = sum(len(x) for x in koersen.values())
+        except BronFout as fout:
+            r.fout = str(fout)
+        resultaten.append(r)
+    return resultaten
 
 
 def ververs_rente(db: Session, ecb: EcbBron) -> Resultaat:
@@ -125,6 +207,8 @@ def ververs_alles(
         select(Instrument).where(Instrument.actief).order_by(Instrument.isin)
     ).all()
     resultaten = [ververs_instrument(db, i, bron, vandaag) for i in instrumenten]
+    if hasattr(bron, "zoek_isin"):
+        resultaten += ververs_marktkoersen(db, bron, ecb, isins_overig_bezit(db))
     resultaten.append(ververs_wisselkoersen(db, ecb))
     if hasattr(ecb, "_client"):
         resultaten.append(ververs_rente(db, ecb))
